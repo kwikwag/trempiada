@@ -1,4 +1,25 @@
+import { z } from "zod";
 import type { GeoPoint, RouteResult, DetourResult } from "../types";
+
+const OsrmRouteSchema = z.object({
+  distance: z.number(),
+  duration: z.number(),
+  geometry: z.string().optional(),
+});
+
+const OsrmRouteResponseSchema = z.object({
+  code: z.string(),
+  routes: z.array(OsrmRouteSchema).optional(),
+});
+
+const OsrmWaypointSchema = z.object({
+  location: z.tuple([z.number(), z.number()]),
+});
+
+const OsrmNearestResponseSchema = z.object({
+  code: z.string(),
+  waypoints: z.array(OsrmWaypointSchema).optional(),
+});
 
 /**
  * OSRM client for route calculation and detour estimation.
@@ -27,13 +48,21 @@ export class RoutingService {
 
     try {
       const res = await fetch(url);
-      const data = (await res.json()) as any;
+      const parsed = OsrmRouteResponseSchema.safeParse(await res.json());
+      if (!parsed.success) {
+        console.warn("OSRM route response validation failed:", parsed.error);
+        return null;
+      }
+      const data = parsed.data;
 
       if (data.code !== "Ok" || !data.routes?.length) {
         return null;
       }
 
       const route = data.routes[0];
+      if (!route.geometry) {
+        return null;
+      }
       return {
         distanceMeters: route.distance,
         durationSeconds: route.duration,
@@ -76,7 +105,12 @@ export class RoutingService {
 
     try {
       const res = await fetch(url);
-      const data = (await res.json()) as any;
+      const parsed = OsrmRouteResponseSchema.safeParse(await res.json());
+      if (!parsed.success) {
+        console.warn("OSRM detour response validation failed:", parsed.error);
+        return null;
+      }
+      const data = parsed.data;
 
       if (data.code !== "Ok" || !data.routes?.length) {
         return null;
@@ -105,7 +139,12 @@ export class RoutingService {
 
     try {
       const res = await fetch(url);
-      const data = (await res.json()) as any;
+      const parsed = OsrmNearestResponseSchema.safeParse(await res.json());
+      if (!parsed.success) {
+        console.warn("OSRM nearest response validation failed:", parsed.error);
+        return null;
+      }
+      const data = parsed.data;
 
       if (data.code !== "Ok" || !data.waypoints?.length) {
         return null;

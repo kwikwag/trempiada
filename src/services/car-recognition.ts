@@ -1,6 +1,27 @@
+import { z } from "zod";
 import type { CarDetails } from "../types";
 import { DEFAULTS } from "../types";
 import type { LicenseLookupService } from "./license-lookup";
+
+const TelegramGetFileSchema = z.object({
+  ok: z.boolean(),
+  result: z.object({ file_path: z.string() }).optional(),
+});
+
+const GeminiPartSchema = z.object({
+  thought: z.boolean().optional(),
+  text: z.string().optional(),
+});
+
+const GeminiResponseSchema = z.object({
+  candidates: z.array(
+    z.object({
+      content: z.object({
+        parts: z.array(GeminiPartSchema),
+      }),
+    })
+  ).optional(),
+});
 
 /**
  * Extract car details from a photo of the rear of a vehicle.
@@ -55,9 +76,13 @@ export class CarRecognitionService {
       const res = await fetch(
         `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`
       );
-      const data = (await res.json()) as any;
-      if (!data.ok) return null;
-      return data.result;
+      const parsed = TelegramGetFileSchema.safeParse(await res.json());
+      if (!parsed.success) {
+        console.warn("Telegram getFile: unexpected response shape", parsed.error);
+        return null;
+      }
+      if (!parsed.data.ok) return null;
+      return parsed.data.result ?? null;
     } catch (err) {
       console.error("Telegram getFile error:", err);
       return null;
@@ -124,11 +149,15 @@ If this is not a car photo, set the error field to "not_a_car".`,
         }),
       });
 
-      const data = (await res.json()) as any;
+      const geminiParsed = GeminiResponseSchema.safeParse(await res.json());
+      if (!geminiParsed.success) {
+        console.warn("Gemini vision: unexpected response shape", geminiParsed.error);
+        return null;
+      }
+      const data = geminiParsed.data;
       // Thinking models (e.g. gemini-2.5-flash) prepend thought parts and may
       // split the response across several content parts; join non-thought parts.
-      const parts: Array<{ thought?: boolean; text?: string }> =
-        data.candidates?.[0]?.content?.parts ?? [];
+      const parts = data.candidates?.[0]?.content?.parts ?? [];
       const text = parts.filter((p) => !p.thought).map((p) => p.text ?? "").join("");
       if (!text) {
         console.error("Gemini vision: empty response", JSON.stringify(data));

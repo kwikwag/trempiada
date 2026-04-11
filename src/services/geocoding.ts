@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * Geocoding service using Nominatim (OpenStreetMap).
  * Converts text addresses to coordinates and vice versa.
@@ -8,6 +10,12 @@ export interface GeocodeResult {
   lng: number;
   label: string;
 }
+
+const NominatimResultSchema = z.object({
+  lat: z.string(),
+  lon: z.string(),
+  display_name: z.string(),
+});
 
 export class GeocodingService {
   private baseUrl: string;
@@ -37,10 +45,14 @@ export class GeocodingService {
       });
       if (!res.ok) return null;
 
-      const results = (await res.json()) as any[];
-      if (!results.length) return null;
+      const parsed = z.array(NominatimResultSchema).safeParse(await res.json());
+      if (!parsed.success) {
+        console.warn("Nominatim geocode response validation failed:", parsed.error);
+        return null;
+      }
+      if (!parsed.data.length) return null;
 
-      const r = results[0];
+      const r = parsed.data[0];
       return {
         lat: parseFloat(r.lat),
         lng: parseFloat(r.lon),
@@ -66,10 +78,13 @@ export class GeocodingService {
       });
       if (!res.ok) return null;
 
-      const result = (await res.json()) as any;
-      if (!result?.display_name) return null;
+      const parsed = NominatimResultSchema.safeParse(await res.json());
+      if (!parsed.success) {
+        console.warn("Nominatim reverseGeocode response validation failed:", parsed.error);
+        return null;
+      }
 
-      return this.shortenLabel(result.display_name);
+      return this.shortenLabel(parsed.data.display_name);
     } catch {
       return null;
     }

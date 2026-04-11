@@ -6,6 +6,128 @@ import type {
   POINTS, DEFAULTS,
 } from "../types";
 
+// ---- Private DB row interfaces (snake_case column names) ----
+
+interface UserRow {
+  id: number;
+  telegram_id: number;
+  first_name: string;
+  gender: Gender | null;
+  photo_file_id: string | null;
+  phone: string | null;
+  points_balance: number;
+  trust_score: number;
+  total_rides_as_driver: number;
+  total_rides_as_rider: number;
+  avg_rating_as_driver: number | null;
+  avg_rating_as_rider: number | null;
+  is_suspended: number;
+  created_at: string;
+}
+
+interface VerificationRow {
+  id: number;
+  user_id: number;
+  type: VerificationType;
+  verified: number;
+  shared_with_riders: number;
+  external_ref: string | null;
+  verified_at: string;
+}
+
+interface CarRow {
+  id: number;
+  user_id: number;
+  plate_number: string;
+  make: string;
+  model: string;
+  color: string;
+  year: number | null;
+  seat_count: number;
+  photo_file_id: string | null;
+  is_active: number;
+  created_at: string;
+}
+
+interface RideRow {
+  id: number;
+  driver_id: number;
+  car_id: number;
+  origin_lat: number;
+  origin_lng: number;
+  dest_lat: number;
+  dest_lng: number;
+  origin_label: string;
+  dest_label: string;
+  route_geometry: string | null;
+  estimated_duration: number | null;
+  departure_time: string;
+  max_detour_minutes: number;
+  available_seats: number;
+  status: RideStatus;
+  created_at: string;
+}
+
+interface RideRequestRow {
+  id: number;
+  rider_id: number;
+  pickup_lat: number;
+  pickup_lng: number;
+  dropoff_lat: number;
+  dropoff_lng: number;
+  pickup_label: string;
+  dropoff_label: string;
+  earliest_departure: string;
+  latest_departure: string;
+  status: RequestStatus;
+  created_at: string;
+}
+
+interface MatchRow {
+  id: number;
+  ride_id: number;
+  request_id: number;
+  rider_id: number;
+  driver_id: number;
+  pickup_lat: number;
+  pickup_lng: number;
+  dropoff_lat: number;
+  dropoff_lng: number;
+  detour_seconds: number;
+  confirmation_code: string;
+  status: MatchStatus;
+  points_cost: number;
+  cancellation_reason: CancellationReason | null;
+  cancelled_by: number | null;
+  picked_up_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+interface RatingRow {
+  id: number;
+  match_id: number;
+  rater_id: number;
+  rated_id: number;
+  score: number;
+  comment: string | null;
+  created_at: string;
+}
+
+interface DisputeRow {
+  id: number;
+  match_id: number;
+  reporter_id: number;
+  description: string;
+  resolution: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+interface CountRow { cnt: number; }
+interface AvgScoreRow { avg_score: number | null; }
+interface PointsBalanceRow { points_balance: number; }
+
 /**
  * Data access layer — thin wrapper over SQLite queries.
  * Every public method is a single prepared statement or small transaction.
@@ -20,23 +142,23 @@ export class Repository {
   // ---- Users ----
 
   createUser(telegramId: number, firstName: string): User {
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<[number, string], UserRow>(`
       INSERT INTO users (telegram_id, first_name, points_balance)
       VALUES (?, ?, 5.0)
       RETURNING *
     `);
-    return this.mapUser(stmt.get(telegramId, firstName) as any);
+    return this.mapUser(stmt.get(telegramId, firstName)!);
   }
 
   getUserByTelegramId(telegramId: number): User | null {
-    const stmt = this.db.prepare("SELECT * FROM users WHERE telegram_id = ?");
-    const row = stmt.get(telegramId) as any;
+    const stmt = this.db.prepare<[number], UserRow>("SELECT * FROM users WHERE telegram_id = ?");
+    const row = stmt.get(telegramId);
     return row ? this.mapUser(row) : null;
   }
 
   getUserById(id: number): User | null {
-    const stmt = this.db.prepare("SELECT * FROM users WHERE id = ?");
-    const row = stmt.get(id) as any;
+    const stmt = this.db.prepare<[number], UserRow>("SELECT * FROM users WHERE id = ?");
+    const row = stmt.get(id);
     return row ? this.mapUser(row) : null;
   }
 
@@ -50,7 +172,7 @@ export class Repository {
     }
   ): void {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number)[] = [];
 
     if (updates.firstName !== undefined) { fields.push("first_name = ?"); values.push(updates.firstName); }
     if (updates.gender !== undefined) { fields.push("gender = ?"); values.push(updates.gender); }
@@ -69,7 +191,7 @@ export class Repository {
   }
 
   getPointsBalance(userId: number): number {
-    const row = this.db.prepare("SELECT points_balance FROM users WHERE id = ?").get(userId) as any;
+    const row = this.db.prepare<[number], PointsBalanceRow>("SELECT points_balance FROM users WHERE id = ?").get(userId);
     return row?.points_balance ?? 0;
   }
 
@@ -81,13 +203,13 @@ export class Repository {
   updateAvgRating(userId: number, role: "driver" | "rider"): void {
     const col = role === "driver" ? "avg_rating_as_driver" : "avg_rating_as_rider";
     // Compute from all ratings where this user was rated in matching role
-    const avg = this.db.prepare(`
+    const avg = this.db.prepare<[number, number], AvgScoreRow>(`
       SELECT AVG(r.score) as avg_score
       FROM ratings r
       JOIN matches m ON r.match_id = m.id
       WHERE r.rated_id = ?
         AND ${role === "driver" ? "m.driver_id" : "m.rider_id"} = ?
-    `).get(userId, userId) as any;
+    `).get(userId, userId);
 
     this.db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`)
       .run(avg?.avg_score ?? null, userId);
@@ -124,24 +246,24 @@ export class Repository {
   }
 
   getVerifications(userId: number): TrustVerification[] {
-    const rows = this.db.prepare(
+    const rows = this.db.prepare<[number], VerificationRow>(
       "SELECT * FROM trust_verifications WHERE user_id = ?"
-    ).all(userId) as any[];
+    ).all(userId);
     return rows.map(this.mapVerification);
   }
 
   /** Get only verifications the user chose to share (shown to riders) */
   getPublicVerifications(userId: number): TrustVerification[] {
-    const rows = this.db.prepare(
+    const rows = this.db.prepare<[number], VerificationRow>(
       "SELECT * FROM trust_verifications WHERE user_id = ? AND shared_with_riders = 1"
-    ).all(userId) as any[];
+    ).all(userId);
     return rows.map(this.mapVerification);
   }
 
   getVerificationCount(userId: number): number {
-    const row = this.db.prepare(
+    const row = this.db.prepare<[number], CountRow>(
       "SELECT COUNT(*) as cnt FROM trust_verifications WHERE user_id = ?"
-    ).get(userId) as any;
+    ).get(userId);
     return row?.cnt ?? 0;
   }
 
@@ -179,27 +301,33 @@ export class Repository {
     // Deactivate other cars for this user
     this.db.prepare("UPDATE cars SET is_active = 0 WHERE user_id = ?").run(userId);
 
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<
+      [number, string, string, string, string, number | null, number, string | null],
+      CarRow
+    >(`
       INSERT INTO cars (user_id, plate_number, make, model, color, year, seat_count, photo_file_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
     return this.mapCar(
-      stmt.get(userId, plateNumber, make, model, color, year, seatCount, photoFileId) as any
+      stmt.get(userId, plateNumber, make, model, color, year, seatCount, photoFileId)!
     );
   }
 
   getActiveCar(userId: number): Car | null {
-    const row = this.db.prepare(
+    const row = this.db.prepare<[number], CarRow>(
       "SELECT * FROM cars WHERE user_id = ? AND is_active = 1"
-    ).get(userId) as any;
+    ).get(userId);
     return row ? this.mapCar(row) : null;
   }
 
   // ---- Rides ----
 
   createRide(ride: Omit<Ride, "id" | "status" | "createdAt">): Ride {
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<
+      [number, number, number, number, number, number, string, string, string | null, number | null, string, number, number],
+      RideRow
+    >(`
       INSERT INTO rides (
         driver_id, car_id, origin_lat, origin_lng, dest_lat, dest_lng,
         origin_label, dest_label, route_geometry, estimated_duration,
@@ -213,7 +341,7 @@ export class Repository {
       ride.originLabel, ride.destLabel,
       ride.routeGeometry, ride.estimatedDuration,
       ride.departureTime, ride.maxDetourMinutes, ride.availableSeats,
-    ) as any);
+    )!);
   }
 
   updateRideStatus(rideId: number, status: RideStatus): void {
@@ -221,21 +349,24 @@ export class Repository {
   }
 
   getOpenRides(): Ride[] {
-    const rows = this.db.prepare(
+    const rows = this.db.prepare<[], RideRow>(
       "SELECT * FROM rides WHERE status = 'open' ORDER BY departure_time ASC"
-    ).all() as any[];
+    ).all();
     return rows.map(this.mapRide);
   }
 
   getRideById(rideId: number): Ride | null {
-    const row = this.db.prepare("SELECT * FROM rides WHERE id = ?").get(rideId) as any;
+    const row = this.db.prepare<[number], RideRow>("SELECT * FROM rides WHERE id = ?").get(rideId);
     return row ? this.mapRide(row) : null;
   }
 
   // ---- Ride Requests ----
 
   createRideRequest(req: Omit<RideRequest, "id" | "status" | "createdAt">): RideRequest {
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<
+      [number, number, number, number, number, string, string, string, string],
+      RideRequestRow
+    >(`
       INSERT INTO ride_requests (
         rider_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng,
         pickup_label, dropoff_label, earliest_departure, latest_departure
@@ -247,13 +378,13 @@ export class Repository {
       req.pickupLat, req.pickupLng, req.dropoffLat, req.dropoffLng,
       req.pickupLabel, req.dropoffLabel,
       req.earliestDeparture, req.latestDeparture,
-    ) as any);
+    )!);
   }
 
   getOpenRequests(): RideRequest[] {
-    const rows = this.db.prepare(
+    const rows = this.db.prepare<[], RideRequestRow>(
       "SELECT * FROM ride_requests WHERE status = 'open' ORDER BY earliest_departure ASC"
-    ).all() as any[];
+    ).all();
     return rows.map(this.mapRequest);
   }
 
@@ -264,7 +395,10 @@ export class Repository {
   // ---- Matches ----
 
   createMatch(match: Omit<Match, "id" | "status" | "cancellationReason" | "cancelledBy" | "pickedUpAt" | "completedAt" | "createdAt">): Match {
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<
+      [number, number, number, number, number, number, number, number, number, string, number],
+      MatchRow
+    >(`
       INSERT INTO matches (
         ride_id, request_id, rider_id, driver_id,
         pickup_lat, pickup_lng, dropoff_lat, dropoff_lng,
@@ -276,7 +410,7 @@ export class Repository {
       match.rideId, match.requestId, match.riderId, match.driverId,
       match.pickupLat, match.pickupLng, match.dropoffLat, match.dropoffLng,
       match.detourSeconds, match.confirmationCode, match.pointsCost,
-    ) as any);
+    )!);
   }
 
   updateMatchStatus(matchId: number, status: MatchStatus): void {
@@ -295,50 +429,50 @@ export class Repository {
   }
 
   getActiveMatchForUser(userId: number): Match | null {
-    const row = this.db.prepare(`
+    const row = this.db.prepare<[number, number], MatchRow>(`
       SELECT * FROM matches
       WHERE (rider_id = ? OR driver_id = ?)
         AND status IN ('pending', 'accepted', 'picked_up')
       ORDER BY created_at DESC LIMIT 1
-    `).get(userId, userId) as any;
+    `).get(userId, userId);
     return row ? this.mapMatch(row) : null;
   }
 
   getMatchById(matchId: number): Match | null {
-    const row = this.db.prepare("SELECT * FROM matches WHERE id = ?").get(matchId) as any;
+    const row = this.db.prepare<[number], MatchRow>("SELECT * FROM matches WHERE id = ?").get(matchId);
     return row ? this.mapMatch(row) : null;
   }
 
   /** Anti-gaming: check if same pair rode together recently */
   getRecentSamePairCount(userId1: number, userId2: number, hoursBack: number): number {
-    const row = this.db.prepare(`
+    const row = this.db.prepare<[number, number, number, number, number], CountRow>(`
       SELECT COUNT(*) as cnt FROM matches
       WHERE status = 'completed'
         AND ((driver_id = ? AND rider_id = ?) OR (driver_id = ? AND rider_id = ?))
         AND completed_at > datetime('now', '-' || ? || ' hours')
-    `).get(userId1, userId2, userId2, userId1, hoursBack) as any;
+    `).get(userId1, userId2, userId2, userId1, hoursBack);
     return row?.cnt ?? 0;
   }
 
   /** Count recent cancellations for anti-abuse */
   getRecentCancellationCount(userId: number, daysBack: number): number {
-    const row = this.db.prepare(`
+    const row = this.db.prepare<[number, number], CountRow>(`
       SELECT COUNT(*) as cnt FROM matches
       WHERE cancelled_by = ?
         AND created_at > datetime('now', '-' || ? || ' days')
-    `).get(userId, daysBack) as any;
+    `).get(userId, daysBack);
     return row?.cnt ?? 0;
   }
 
   // ---- Ratings ----
 
   addRating(matchId: number, raterId: number, ratedId: number, score: number, comment: string | null): Rating {
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<[number, number, number, number, string | null], RatingRow>(`
       INSERT INTO ratings (match_id, rater_id, rated_id, score, comment)
       VALUES (?, ?, ?, ?, ?)
       RETURNING *
     `);
-    const rating = this.mapRating(stmt.get(matchId, raterId, ratedId, score, comment) as any);
+    const rating = this.mapRating(stmt.get(matchId, raterId, ratedId, score, comment)!);
 
     // Update the rated user's average
     const ratedUser = this.getUserById(ratedId);
@@ -352,33 +486,33 @@ export class Repository {
   }
 
   getRatingsForMatch(matchId: number): Rating[] {
-    const rows = this.db.prepare(
+    const rows = this.db.prepare<[number], RatingRow>(
       "SELECT * FROM ratings WHERE match_id = ?"
-    ).all(matchId) as any[];
+    ).all(matchId);
     return rows.map(this.mapRating);
   }
 
   bothRated(matchId: number): boolean {
-    const row = this.db.prepare(
+    const row = this.db.prepare<[number], CountRow>(
       "SELECT COUNT(*) as cnt FROM ratings WHERE match_id = ?"
-    ).get(matchId) as any;
+    ).get(matchId);
     return (row?.cnt ?? 0) >= 2;
   }
 
   // ---- Disputes ----
 
   createDispute(matchId: number, reporterId: number, description: string): Dispute {
-    const stmt = this.db.prepare(`
+    const stmt = this.db.prepare<[number, number, string], DisputeRow>(`
       INSERT INTO disputes (match_id, reporter_id, description)
       VALUES (?, ?, ?)
       RETURNING *
     `);
-    return this.mapDispute(stmt.get(matchId, reporterId, description) as any);
+    return this.mapDispute(stmt.get(matchId, reporterId, description)!);
   }
 
   // ---- Row mappers ----
 
-  private mapUser(row: any): User {
+  private mapUser(row: UserRow): User {
     return {
       id: row.id,
       telegramId: row.telegram_id,
@@ -397,7 +531,7 @@ export class Repository {
     };
   }
 
-  private mapVerification(row: any): TrustVerification {
+  private mapVerification(row: VerificationRow): TrustVerification {
     return {
       id: row.id,
       userId: row.user_id,
@@ -409,7 +543,7 @@ export class Repository {
     };
   }
 
-  private mapCar(row: any): Car {
+  private mapCar(row: CarRow): Car {
     return {
       id: row.id,
       userId: row.user_id,
@@ -425,7 +559,7 @@ export class Repository {
     };
   }
 
-  private mapRide(row: any): Ride {
+  private mapRide(row: RideRow): Ride {
     return {
       id: row.id,
       driverId: row.driver_id,
@@ -446,7 +580,7 @@ export class Repository {
     };
   }
 
-  private mapRequest(row: any): RideRequest {
+  private mapRequest(row: RideRequestRow): RideRequest {
     return {
       id: row.id,
       riderId: row.rider_id,
@@ -463,7 +597,7 @@ export class Repository {
     };
   }
 
-  private mapMatch(row: any): Match {
+  private mapMatch(row: MatchRow): Match {
     return {
       id: row.id,
       rideId: row.ride_id,
@@ -486,7 +620,7 @@ export class Repository {
     };
   }
 
-  private mapRating(row: any): Rating {
+  private mapRating(row: RatingRow): Rating {
     return {
       id: row.id,
       matchId: row.match_id,
@@ -498,7 +632,7 @@ export class Repository {
     };
   }
 
-  private mapDispute(row: any): Dispute {
+  private mapDispute(row: DisputeRow): Dispute {
     return {
       id: row.id,
       matchId: row.match_id,

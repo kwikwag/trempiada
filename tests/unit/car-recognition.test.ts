@@ -4,6 +4,7 @@ import { CarRecognitionService } from "../../src/services/car-recognition";
 import { LicenseLookupService } from "../../src/services/license-lookup";
 import { DEFAULTS } from "../../src/types";
 import { createTempLicenseDb } from "../helpers/license-db";
+import { withFetch } from "../helpers/fetch-mock";
 
 // 457-11-302 stripped to digits
 const TEST_PLATE_NO = 45711302;
@@ -22,31 +23,6 @@ function telegramFileResponse(filePath: string) {
   return { ok: true, result: { file_path: filePath } };
 }
 
-type FetchHandler = () => object;
-
-/** Replace global.fetch for the duration of `fn`, routing calls by URL substring. */
-async function withFetch<T>(routes: Record<string, FetchHandler>, fn: () => Promise<T>): Promise<T> {
-  const saved = global.fetch;
-  global.fetch = (async (input: RequestInfo | URL) => {
-    const url = input.toString();
-    for (const [pattern, handler] of Object.entries(routes)) {
-      if (url.includes(pattern)) {
-        const body = handler();
-        return {
-          ok: true,
-          json: async () => body,
-          arrayBuffer: async () => Buffer.from("fake-image").buffer,
-        } as unknown as Response;
-      }
-    }
-    throw new Error(`Unexpected fetch: ${url}`);
-  }) as typeof global.fetch;
-  try {
-    return await fn();
-  } finally {
-    global.fetch = saved;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Gemini vision response handling
@@ -87,6 +63,42 @@ test("analyzeCarImage returns null when Gemini response has no candidates", asyn
 
   const result = await withFetch({ "generativelanguage.googleapis.com": () => ({ candidates: [] }) }, () =>
     service.analyzeCarImage(Buffer.from("fake"))
+  );
+
+  assert.equal(result, null);
+});
+
+test("analyzeCarImage returns null when Gemini response fails schema validation", async () => {
+  const service = new CarRecognitionService("fake-key", "fake-token");
+  // `candidates` must be an array — a string fails the schema
+  const invalid = { candidates: "not-an-array" };
+
+  const result = await withFetch({ "generativelanguage.googleapis.com": () => invalid }, () =>
+    service.analyzeCarImage(Buffer.from("fake"))
+  );
+
+  assert.equal(result, null);
+});
+
+test("analyzeCarImage returns null when Gemini candidate is missing content.parts", async () => {
+  const service = new CarRecognitionService("fake-key", "fake-token");
+  // `parts` must be an array — an object fails the schema
+  const invalid = { candidates: [{ content: { parts: "not-an-array" } }] };
+
+  const result = await withFetch({ "generativelanguage.googleapis.com": () => invalid }, () =>
+    service.analyzeCarImage(Buffer.from("fake"))
+  );
+
+  assert.equal(result, null);
+});
+
+test("extractFromTelegramPhoto returns null when getFile response fails schema validation", async () => {
+  const service = new CarRecognitionService("fake-key", "fake-token");
+  // `ok` must be a boolean — a string fails the schema
+  const invalid = { status: "ok" };
+
+  const result = await withFetch({ "api.telegram.org": () => invalid }, () =>
+    service.extractFromTelegramPhoto("file-id")
   );
 
   assert.equal(result, null);

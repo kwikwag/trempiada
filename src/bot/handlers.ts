@@ -7,6 +7,7 @@ import type { RoutingService } from "../services/routing";
 import type { CarRecognitionService } from "../services/car-recognition";
 import type { GeocodingService } from "../services/geocoding";
 import { DEFAULTS, POINTS } from "../types";
+import type { VerificationType } from "../types";
 import {
   formatTrustProfile, formatCarInfo, formatRideSummary,
   formatMatchForRider, formatDuration, generateCode,
@@ -345,7 +346,7 @@ export function registerHandlers(
     const session = sessions.get(telegramId);
     if (!session.userId) return;
 
-    const type = ctx.match![1] as any;
+    const type = ctx.match![1] as VerificationType;
     const verifications = repo.getVerifications(session.userId);
     const v = verifications.find(v => v.type === type);
     if (!v) return;
