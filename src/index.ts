@@ -6,6 +6,7 @@ import { SessionManager } from "./bot/session";
 import { RoutingService } from "./services/routing";
 import { MatchingService } from "./services/matching";
 import { CarRecognitionService } from "./services/car-recognition";
+import { LicenseLookupService } from "./services/license-lookup";
 import { GeocodingService } from "./services/geocoding";
 import { registerHandlers } from "./bot/handlers";
 
@@ -16,16 +17,17 @@ import { registerHandlers } from "./bot/handlers";
 async function main() {
   // --- Validate env ---
   const BOT_TOKEN = process.env.BOT_TOKEN;
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
   const DATABASE_PATH = process.env.DATABASE_PATH || "./data/trempbot.db";
+  const LICENSE_DATABASE_PATH = process.env.LICENSE_DATABASE_PATH || "./data/licenses.db";
   const OSRM_URL = process.env.OSRM_URL || "http://localhost:5000";
 
   if (!BOT_TOKEN) {
     console.error("BOT_TOKEN is required. Set it in .env");
     process.exit(1);
   }
-  if (!ANTHROPIC_API_KEY) {
-    console.error("ANTHROPIC_API_KEY is required. Set it in .env");
+  if (!GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY is required. Set it in .env");
     process.exit(1);
   }
 
@@ -37,7 +39,8 @@ async function main() {
   const sessions = new SessionManager();
   const routing = new RoutingService(OSRM_URL);
   const matching = new MatchingService(repo, routing);
-  const carRecognition = new CarRecognitionService(ANTHROPIC_API_KEY, BOT_TOKEN);
+  const licenseLookup = new LicenseLookupService(LICENSE_DATABASE_PATH);
+  const carRecognition = new CarRecognitionService(GEMINI_API_KEY, BOT_TOKEN, licenseLookup, process.env.GEMINI_MODEL);
   const geocoding = new GeocodingService();
 
   // --- Initialize bot ---
@@ -56,6 +59,7 @@ async function main() {
   const shutdown = (signal: string) => {
     console.log(`\n${signal} received. Shutting down...`);
     bot.stop(signal);
+    licenseLookup.close();
     db.close();
     process.exit(0);
   };

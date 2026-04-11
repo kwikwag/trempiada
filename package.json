@@ -6,7 +6,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "migrate": "ts-node src/db/migrate.ts"
+    "migrate": "ts-node src/db/migrate.ts",
+    "test": "node --test -r ts-node/register/transpile-only 'tests/unit/**/*.test.ts'",
+    "test:e2e": "node --test -r ts-node/register/transpile-only 'tests/e2e/**/*.test.ts'",
+    "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,e2e}/**/*.test.ts'"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

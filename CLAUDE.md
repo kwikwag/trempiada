@@ -20,6 +20,8 @@ npm run migrate      # Initialize/migrate database
 npx tsc --noEmit     # Type-check without emitting
 ```
 
+Node is available at `~/.nvm/versions/node/v22.15.0/bin/node`
+
 ## Architecture
 
 Single-process monolith. No microservices, no message queues.
@@ -78,3 +80,11 @@ OSRM_URL=            # Default: http://localhost:5000
 - All dates stored as ISO 8601 strings in SQLite
 - Telegram file IDs stored for photos (not downloaded/stored locally)
 - Points are REAL in SQLite (fractional values like 0.5)
+
+## Ideas
+
+  - Vouch system: only allow users into the app from an invite link they receive from another user. The invite is one-time. Users are allowed to invite N people per time window to throttle growth and prevent abuse. The users are required to vouch for the people they invite. This way we obtain a trust graph network.
+  - Downloading the databases at:
+    1. https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/053cea08-09bc-40ec-8f7a-156f0677aff3
+    2. https://data.gov.il/he/datasets/ministry_of_transport/degem-rechev-wltp/142afde2-6228-49f9-8a29-9b6c3a0cbe40
+    And use scripts/build_vehicle_l
