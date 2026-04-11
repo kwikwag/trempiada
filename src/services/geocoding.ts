@@ -23,7 +23,7 @@ export class GeocodingService {
 
   constructor(
     baseUrl = "https://nominatim.openstreetmap.org",
-    userAgent = "TrempBot/1.0",
+    userAgent = "TrempiadaBot/1.0",
   ) {
     this.baseUrl = baseUrl;
     this.userAgent = userAgent;

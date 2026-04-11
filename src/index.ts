@@ -11,7 +11,7 @@ import { GeocodingService } from "./services/geocoding";
 import { registerHandlers } from "./bot/handlers";
 
 // ============================================================
-// TrempBot — Main Entry Point
+// Main Entry Point
 // ============================================================
 
 async function main() {
@@ -68,7 +68,7 @@ async function main() {
 
   // --- Launch ---
   await bot.launch();
-  console.log("TrempBot is running! 🚗");
+  console.log("TrempiadaBot is running! 🚗");
 }
 
 main().catch((err) => {

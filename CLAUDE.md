@@ -1,4 +1,4 @@
-# TrempBot
+# TrempiadaBot
 
 Telegram-based ridesharing bot connecting drivers with hitchhikers in Israel.
 
@@ -58,7 +58,7 @@ src/
 ```
 BOT_TOKEN=           # Telegram bot token (required)
 ANTHROPIC_API_KEY=   # For car photo analysis (required)
-DATABASE_PATH=       # Default: ./data/trempbot.db
+DATABASE_PATH=       # Default: ./data/rides.db
 OSRM_URL=            # Default: http://localhost:5000
 ```
 

@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Trempiada</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sky:   #3A7BD5;
+      --terra: #C0713A;
+      --dark:  #1C1C1E;
+      --muted: #6B6B70;
+      --light: #F5F0E8;
+      --border: #E0D8CC;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--light);
+      color: var(--dark);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    header {
+      background: linear-gradient(160deg, #c9e8ff 0%, #e8d5a3 60%, #d4a56a 100%);
+      padding: 40px 24px 32px;
+      text-align: center;
+    }
+
+    header a {
+      display: inline-block;
+      margin-bottom: 20px;
+      color: var(--dark);
+      text-decoration: none;
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+    header a:hover { opacity: 1; }
+
+    header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--dark), var(--terra));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header p {
+      margin-top: 8px;
+      font-size: 0.875rem;
+      color: #555;
+    }
+
+    main {
+      max-width: 760px;
+      margin: 48px auto;
+      padding: 0 24px 80px;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* TOC */
+    .toc {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+
+    .toc h2 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    .toc ol {
+      padding-left: 20px;
+    }
+
+    .toc li {
+      margin-bottom: 6px;
+    }
+
+    .toc a {
+      color: var(--sky);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    .toc a:hover { text-decoration: underline; }
+
+    /* Sections */
+    section {
+      margin-bottom: 52px;
+    }
+
+    section h2 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--border);
+      color: var(--dark);
+    }
+
+    section h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 24px 0 10px;
+      color: var(--dark);
+    }
+
+    section p {
+      margin-bottom: 14px;
+      color: #2c2c2e;
+    }
+
+    section ul, section ol {
+      padding-left: 22px;
+      margin-bottom: 14px;
+    }
+
+    section li {
+      margin-bottom: 7px;
+      color: #2c2c2e;
+    }
+
+    /* Data table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      margin-bottom: 16px;
+    }
+
+    .data-table th {
+      background: #f0ebe2;
+      text-align: left;
+      padding: 10px 14px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+    }
+
+    .data-table td {
+      padding: 9px 14px;
+      border: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .data-table tr:nth-child(even) td {
+      background: #faf7f2;
+    }
+
+    /* Callout */
+    .callout {
+      background: #fff8ee;
+      border-left: 4px solid var(--terra);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 20px 0;
+      font-size: 0.9rem;
+      color: #3a2a1a;
+    }
+
+    .callout strong { color: var(--terra); }
+
+    /* Footer */
+    footer {
+      padding: 24px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: var(--light);
+      border-top: 1px solid var(--border);
+    }
+
+    footer a { color: var(--sky); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="index.html">← Back to Trempiada</a>
+    <h1>Privacy Policy</h1>
+    <p>Effective date: [TODO — insert date before publishing] &nbsp;·&nbsp; Last updated: [TODO]</p>
+  </header>
+
+  <main>
+
+    <!-- Table of Contents -->
+    <nav class="toc" aria-label="Table of contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#s1">Who We Are</a></li>
+        <li><a href="#s2">Scope and Legal Basis</a></li>
+        <li><a href="#s3">Data We Collect</a></li>
+        <li><a href="#s4">How We Use Your Data</a></li>
+        <li><a href="#s5">Data Shared Between Users</a></li>
+        <li><a href="#s6">Third-Party Services</a></li>
+        <li><a href="#s7">Message Relay</a></li>
+        <li><a href="#s8">Data Security</a></li>
+        <li><a href="#s9">Data Retention</a></li>
+        <li><a href="#s10">Your Rights</a></li>
+        <li><a href="#s11">Children</a></li>
+        <li><a href="#s12">Changes to This Policy</a></li>
+        <li><a href="#s13">Contact Us</a></li>
+      </ol>
+    </nav>
+
+    <!-- 1 -->
+    <section id="s1">
+      <h2>1. Who We Are</h2>
+      <p>
+        Trempiada is a ridesharing service operated via the Telegram messaging platform. It connects
+        drivers who have spare seats with hitchhikers travelling in the same direction, at no charge.
+        The service is delivered entirely through the Telegram bot <strong>@TrempiadaBot</strong>.
+      </p>
+      <p>
+        The service is operated by <strong>[TODO — operator legal name and address]</strong>
+        ("we", "us", or "our"). You can reach us at <strong>[TODO — contact email]</strong>.
+      </p>
+      <p>
+        This policy explains what personal data we collect, why we collect it, how we protect it,
+        and what rights you have under Israeli law.
+      </p>
+    </section>
+
+    <!-- 2 -->
+    <section id="s2">
+      <h2>2. Scope and Legal Basis</h2>
+      <p>
+        <strong>Geographic scope:</strong> Trempiada is intended solely for persons who reside in,
+        or are physically located in, Israel. By registering or using the service you confirm
+        that this applies to you. If it does not, you must not use the service.
+        We do not knowingly collect personal data from persons outside Israel.
+      </p>
+      <p>
+        This policy governs the data we collect and process ourselves. It does not govern data that
+        Telegram processes as part of its own service — for that, please see the
+        <a href="https://telegram.org/privacy" target="_blank" rel="noopener">Telegram Privacy Policy</a>.
+      </p>
+      <p>
+        We process your personal data on the following legal grounds:
+      </p>
+      <ul>
+        <li><strong>Performance of a service:</strong> data necessary to match drivers with riders, manage ride lifecycles, and operate the points economy.</li>
+        <li><strong>Legitimate interests:</strong> safety, anti-abuse, ratings integrity, and dispute resolution.</li>
+        <li><strong>Consent:</strong> optional verifications (social accounts, email) and optional profile photo.</li>
+      </ul>
+      <p>
+        The collection and processing of personal data is governed by the
+        <strong>Israeli Privacy Protection Law, 5741–1981</strong>, as comprehensively amended by
+        <strong>Amendment 13 (August 2024)</strong>, and by the
+        <strong>Privacy Protection Regulations (Information Security), 5777–2017</strong>.
+      </p>
+    </section>
+
+    <!-- 3 -->
+    <section id="s3">
+      <h2>3. Data We Collect</h2>
+      <p>
+        We only collect data that is strictly necessary for the service to function.
+        All data is stored in a local database operated by us; it is never sold.
+      </p>
+
+      <h3>3.1 Account information</h3>
+      <table class="data-table">
+        <thead>
+          <tr><th>Field</th><th>Source</th><th>Why we collect it</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Telegram user ID (numeric)</td>
+            <td>Telegram Bot API, automatic</td>
+            <td>Uniquely identifies your account in our database</td>
+          </tr>
+          <tr>
+            <td>First name</td>
+            <td>You enter it during registration</td>
+            <td>Displayed to your matched driver or rider for identification</td>
+          </tr>
+          <tr>
+            <td>Gender</td>
+            <td>You choose during registration</td>
+            <td>Shown to riders as a safety signal</td>
+          </tr>
+          <tr>
+            <td>Profile photo</td>
+            <td>Optional — you send a photo</td>
+            <td>Helps riders identify their driver; stored as a Telegram file ID only — the image remains on Telegram's servers and is never downloaded or stored by us</td>
+          </tr>
+          <tr>
+            <td>Phone number</td>
+            <td>Optional — you share it for phone verification</td>
+            <td>Used to record completion of the phone verification; not shared with other users</td>
+          </tr>
+          <tr>
+            <td>Points balance &amp; trust score</td>
+            <td>Computed by the service</td>
+            <td>Powers the points economy and match ranking</td>
+          </tr>
+          <tr>
+            <td>Ride counts, average ratings</td>
+            <td>Computed by the service</td>
+            <td>Shown as part of your trust profile</td>
+          </tr>
+          <tr>
+            <td>Suspension status</td>
+            <td>Set by the service following policy violations</td>
+            <td>Enforces safety and anti-abuse rules</td>
+          </tr>
+          <tr>
+            <td>Account creation timestamp</td>
+            <td>Automatic</td>
+            <td>Audit and dispute resolution</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>3.2 Identity verifications (drivers &amp; riders)</h3>
+      <p>
+        To use the service as a driver you must complete at least one verification.
+        Each verification record stores:
+      </p>
+      <ul>
+        <li>Verification type: <em>phone, photo, car, facebook, linkedin, google,</em> or <em>email</em></li>
+        <li>Whether you have chosen to make it visible to riders (you control this at any time via <code>/trust</code>)</li>
+        <li>An external reference where applicable — for example, a social profile URL or email address, used only to confirm the verification and never displayed to other users</li>
+        <li>Timestamp of verification</li>
+      </ul>
+
+      <h3>3.3 Car registration (drivers only)</h3>
+      <ul>
+        <li>Licence plate number (partially masked to riders until a match is confirmed)</li>
+        <li>Make, model, colour, year</li>
+        <li>Number of seats</li>
+        <li>Car photo — stored as a Telegram file ID; the image is never downloaded or stored by us locally</li>
+      </ul>
+      <div class="callout">
+        <strong>Car photo &amp; AI processing:</strong> When you submit a car photo during registration,
+        the image is downloaded from Telegram and passed to the <strong>Google Gemini Vision API</strong>
+        to automatically extract the licence plate number and car details.
+        The image is transmitted to Google's servers for this single purpose and is subject to
+        <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.
+        We do not retain the image after processing.
+      </div>
+
+      <h3>3.4 Ride offers (drivers)</h3>
+      <ul>
+        <li>Origin and destination coordinates (latitude/longitude) and human-readable labels</li>
+        <li>Planned route geometry (an encoded path on Israeli road network; computed by our self-hosted routing server)</li>
+        <li>Estimated route duration</li>
+        <li>Departure time</li>
+        <li>Maximum acceptable detour (minutes)</li>
+        <li>Available seats</li>
+        <li>Ride status and timestamps</li>
+      </ul>
+
+      <h3>3.5 Ride requests (riders)</h3>
+      <ul>
+        <li>Pickup and dropoff coordinates and labels</li>
+        <li>Earliest and latest acceptable departure time</li>
+        <li>Status and creation timestamp</li>
+      </ul>
+
+      <h3>3.6 Matches</h3>
+      <p>When a driver and rider are paired, we record:</p>
+      <ul>
+        <li>References to the ride offer and ride request</li>
+        <li>Agreed pickup and dropoff coordinates</li>
+        <li>Added detour duration</li>
+        <li>A 4-digit pickup confirmation code used at the roadside to verify identities; it is not used once the ride has begun</li>
+        <li>Match status and lifecycle timestamps (accepted, picked up, completed)</li>
+        <li>Points transferred</li>
+        <li>Cancellation reason and which party cancelled, if applicable</li>
+      </ul>
+
+      <h3>3.7 Ratings</h3>
+      <p>
+        After each completed ride, both parties rate each other simultaneously (1–5 stars)
+        and may leave an optional text comment. We store the scores, comments, and timestamps.
+        Ratings are revealed to both parties at the same time to prevent retaliatory rating.
+      </p>
+
+      <h3>3.8 Disputes</h3>
+      <p>
+        If you report an issue with a completed match via <code>/sos</code> or the dispute flow,
+        we store your user ID, the match reference, your free-text description,
+        and any resolution notes.
+      </p>
+    </section>
+
+    <!-- 4 -->
+    <section id="s4">
+      <h2>4. How We Use Your Data</h2>
+      <table class="data-table">
+        <thead>
+          <tr><th>Purpose</th><th>Data used</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Matching drivers with riders</td>
+            <td>Route coordinates, departure times, seat count, detour preference</td>
+          </tr>
+          <tr>
+            <td>Identifying parties at pickup</td>
+            <td>First name, gender, car details, confirmation code</td>
+          </tr>
+          <tr>
+            <td>Trust &amp; safety display</td>
+            <td>Verification badges (those you chose to share), average ratings, gender</td>
+          </tr>
+          <tr>
+            <td>Points economy</td>
+            <td>Ratings, ride counts, points balance</td>
+          </tr>
+          <tr>
+            <td>Anti-abuse enforcement</td>
+            <td>Cancellation records, no-show flags, suspension status</td>
+          </tr>
+          <tr>
+            <td>Dispute resolution</td>
+            <td>Match records, dispute descriptions, SOS events</td>
+          </tr>
+          <tr>
+            <td>Route calculation</td>
+            <td>Coordinates sent to our self-hosted OSRM server (no third party)</td>
+          </tr>
+          <tr>
+            <td>Car detail extraction (registration only)</td>
+            <td>Car photo sent once to Google Gemini Vision API</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>We do not use your data for advertising, profiling, or any purpose unrelated to the ridesharing service.</p>
+    </section>
+
+    <!-- 5 -->
+    <section id="s5">
+      <h2>5. Data Shared Between Users</h2>
+      <p>
+        We share the minimum information necessary to make a ride work safely.
+        No Telegram usernames, phone numbers, or direct contact details are ever shared
+        between users by the service.
+      </p>
+
+      <h3>What riders see about a driver (before confirming a match)</h3>
+      <ul>
+        <li>First name</li>
+        <li>Gender</li>
+        <li>Trust verification badges — only those the driver explicitly chose to share</li>
+        <li>Average driver rating and number of rides completed</li>
+        <li>Car make, model, colour, year, and seat count</li>
+        <li>Licence plate — <strong>partially masked</strong> (e.g. "12-??-456") until both parties confirm the match</li>
+      </ul>
+
+      <h3>What drivers see about a rider (before confirming a match)</h3>
+      <ul>
+        <li>First name</li>
+        <li>Trust verification badges the rider chose to share</li>
+        <li>Average rider rating</li>
+      </ul>
+
+      <h3>After match confirmation</h3>
+      <ul>
+        <li>The full licence plate is revealed to the rider</li>
+        <li>A 4-digit confirmation code is provided to both parties for use at pickup</li>
+      </ul>
+    </section>
+
+    <!-- 6 -->
+    <section id="s6">
+      <h2>6. Third-Party Services</h2>
+
+      <h3>Telegram</h3>
+      <p>
+        All interaction with Trempiada flows through the Telegram platform.
+        Telegram receives messages you send and delivers responses. Telegram's own data
+        practices are governed by the
+        <a href="https://telegram.org/privacy" target="_blank" rel="noopener">Telegram Privacy Policy</a>.
+        Trempiada operates in compliance with the
+        <a href="https://telegram.org/privacy-tpa" target="_blank" rel="noopener">Telegram Standard Bot Privacy Policy</a>
+        and the Telegram Bot Developer Terms.
+      </p>
+
+      <h3>Google (Gemini Vision API)</h3>
+      <p>
+        Car photos submitted during driver registration are downloaded from Telegram and
+        passed once to the Google Gemini Vision API to extract vehicle details
+        (licence plate, make, model, colour, year). This transfer occurs only at registration time
+        and the image is not retained by us after processing.
+        Google's handling of this data is governed by
+        <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.
+      </p>
+
+      <h3>OSRM routing server (self-hosted)</h3>
+      <p>
+        Route and detour calculations are performed on a self-hosted OSRM instance using
+        Israeli OpenStreetMap data. Coordinates are sent only to our own server;
+        no location data is transmitted to any external routing service.
+      </p>
+
+      <h3>No other third parties</h3>
+      <p>
+        We do not use analytics platforms, advertising networks, or any other third-party
+        data processors beyond those listed above.
+      </p>
+    </section>
+
+    <!-- 7 -->
+    <section id="s7">
+      <h2>7. In-Ride Message Relay</h2>
+      <p>
+        During an active match, non-command messages you send to the bot are forwarded
+        to the other party in real time. These relay messages are <strong>not stored</strong>
+        in our database — they pass through the bot transiently and are not retained after delivery.
+        This relay mechanism exists so that drivers and riders can communicate without
+        exchanging personal contact details.
+      </p>
+    </section>
+
+    <!-- 8 -->
+    <section id="s8">
+      <h2>8. Data Security</h2>
+      <p>
+        We classify our information systems under the <strong>Privacy Protection Regulations
+        (Information Security), 5777–2017</strong> at the <strong>medium security level</strong>
+        (רמת אבטחה בינונית), which applies given the nature of data we process
+        (location data, phone numbers, and photographs).
+        In accordance with that classification we maintain the following measures:
+      </p>
+      <ul>
+        <li><strong>Access controls:</strong> access to personal data is restricted to
+            authorised personnel with defined, role-based permissions. No personal data
+            is exposed through a public-facing interface.</li>
+        <li><strong>Physical and environmental security:</strong> systems holding personal
+            data are operated on secured infrastructure with physical access restrictions.</li>
+        <li><strong>Data minimisation in transit:</strong> licence plates are partially masked
+            when shown to riders until a match is mutually confirmed; no personal contact details
+            are shared between users by the service.</li>
+        <li><strong>Image handling:</strong> profile and car photos are not stored by us —
+            only the reference identifiers issued by Telegram are retained.</li>
+        <li><strong>Security incident procedures:</strong> we maintain procedures for detecting,
+            containing, and reporting security incidents.</li>
+        <li><strong>Periodic review:</strong> security measures are reviewed periodically
+            in accordance with Regulation 16.</li>
+      </ul>
+      <p>
+        In the event of a personal data breach likely to affect your rights, we will notify
+        you and, where required, the Israeli Privacy Protection Authority, as mandated by
+        Amendment 13 to the Privacy Protection Law.
+      </p>
+    </section>
+
+    <!-- 9 -->
+    <section id="s9">
+      <h2>9. Data Retention</h2>
+      <p>
+        We retain your personal data for as long as your account is active and for a reasonable
+        period thereafter to allow for dispute resolution and legal compliance.
+        The following principles apply:
+      </p>
+      <ul>
+        <li><strong>Active account data</strong> (profile, verifications, car) — retained while your account is active.</li>
+        <li><strong>Ride and match records</strong> — retained for [TODO — e.g. 2 years] after the ride date for dispute resolution and regulatory purposes.</li>
+        <li><strong>Ratings and comments</strong> — retained as part of the ride record.</li>
+        <li><strong>Dispute records</strong> — retained for [TODO — e.g. 5 years] after resolution.</li>
+      </ul>
+      <p>
+        You may request deletion of your account and associated data at any time — see Section 10.
+        We will honour deletion requests within 30 days, subject to any mandatory retention
+        obligations under applicable law.
+      </p>
+      <p>
+        You can delete your account at any time by sending <code>/delete</code> to
+        @TrempiadaBot and confirming. Deletion is permanent and immediate.
+      </p>
+    </section>
+
+    <!-- 10 -->
+    <section id="s10">
+      <h2>10. Your Rights</h2>
+      <p>
+        Under the Israeli Privacy Protection Law (as amended by Amendment 13, 2024) you have
+        the right to:
+      </p>
+      <ul>
+        <li><strong>Access:</strong> request a copy of all personal data we hold about you.</li>
+        <li><strong>Correction:</strong> ask us to correct inaccurate data.</li>
+        <li><strong>Deletion:</strong> ask us to delete your data, subject to legal retention requirements.</li>
+        <li><strong>Restriction / objection:</strong> ask us to restrict or stop processing your data in certain circumstances.</li>
+        <li><strong>Withdrawal of consent:</strong> where processing is based on consent (e.g. optional verifications), withdraw that consent at any time by sending a message to the bot or contacting us.</li>
+      </ul>
+      <p>
+        To exercise any of these rights, contact us at the address in Section 13.
+        We will respond within <strong>30 days</strong>.
+      </p>
+      <p>
+        If you believe your privacy rights have been violated, you may lodge a complaint with
+        the <strong>Israeli Privacy Protection Authority (PPA)</strong>:
+        <a href="https://www.gov.il/he/departments/the_privacy_protection_authority" target="_blank" rel="noopener">www.gov.il — Privacy Protection Authority</a>.
+      </p>
+    </section>
+
+    <!-- 11 -->
+    <section id="s11">
+      <h2>11. Children</h2>
+      <p>
+        The service is intended for users aged 18 and over. We do not knowingly collect
+        personal data from anyone under 18. If you believe a minor has registered, please
+        contact us and we will promptly delete the account.
+      </p>
+    </section>
+
+    <!-- 12 -->
+    <section id="s12">
+      <h2>12. Changes to This Policy</h2>
+      <p>
+        We may update this policy from time to time. Material changes will be announced
+        via a message from @TrempiadaBot. The "Last updated" date at the top of this page
+        will always reflect the most recent version. Continued use of the service after
+        a change takes effect constitutes acceptance of the revised policy.
+      </p>
+    </section>
+
+    <!-- 13 -->
+    <section id="s13">
+      <h2>13. Contact Us</h2>
+      <p>For any privacy-related questions, data requests, or complaints:</p>
+      <ul>
+        <li><strong>Operator:</strong> [TODO — legal name]</li>
+        <li><strong>Email:</strong> [TODO — contact email]</li>
+        <li><strong>Address:</strong> [TODO — postal address, Israel]</li>
+      </ul>
+      <p>
+        Alternatively, send a message directly to
+        <a href="https://t.me/TrempiadaBot" target="_blank" rel="noopener">@TrempiadaBot</a>
+        with the text <code>/privacy</code>.
+      </p>
+    </section>
+
+  </main>
+
+  <footer>
+    <a href="index.html">Trempiada</a> &nbsp;·&nbsp;
+    <a href="https://github.com/kwikwag/trempiada" target="_blank" rel="noopener">GitHub</a>
+  </footer>
+
+</body>
+</html>

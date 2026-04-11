@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trempiada — Hitchhiking, reimagined</title>
+  <meta name="description" content="A Telegram bot that connects drivers with hitchhikers along their routes in Israel. Free, safe, and community-driven.">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sky:   #3A7BD5;
+      --sand:  #E8C98A;
+      --terra: #C0713A;
+      --dark:  #1C1C1E;
+      --muted: #6B6B70;
+      --light: #F5F0E8;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--light);
+      color: var(--dark);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(160deg, #c9e8ff 0%, #e8d5a3 60%, #d4a56a 100%);
+      padding: 64px 24px 32px;
+      text-align: center;
+      position: relative;
+      overflow: visible;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0px;
+      height: 120px;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1440' height='120' viewBox='0 0 1440 120'%3E%3Cpath fill='%23F5F0E8' d='M0 80 Q360 20 720 80 Q1080 140 1440 80 L1440 120 L0 120Z'/%3E%3C/svg%3E") bottom/cover no-repeat;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero img, .hero h1, .hero p, .hero a {
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero img {
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+      border: 4px solid #fff;
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 6vw, 3.4rem);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(90deg, var(--dark), var(--terra));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .hero p.tagline {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
+      color: #3a3a3c;
+      max-width: 480px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--sky);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1.05rem;
+      padding: 14px 32px;
+      border-radius: 50px;
+      box-shadow: 0 4px 20px rgba(58,123,213,0.35);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(58,123,213,0.45);
+    }
+
+    .cta svg { flex-shrink: 0; }
+
+    /* ── Features ── */
+    .features {
+      padding: 32px 24px 72px;
+      max-width: 920px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 48px;
+      color: var(--dark);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    @media (max-width: 680px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 28px 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+      border: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .card .icon {
+      font-size: 2rem;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    /* ── How it works ── */
+    .how {
+      background: #fff;
+      padding: 72px 24px;
+    }
+
+    .how-inner {
+      max-width: 680px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .how h2 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 44px;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      text-align: left;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+    }
+
+    .step-num {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      border-radius: 50%;
+      background: var(--terra);
+      color: #fff;
+      font-weight: 800;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-text h4 {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .step-text p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── Footer CTA ── */
+    .footer-cta {
+      padding: 64px 24px;
+      text-align: center;
+      background: linear-gradient(135deg, #1a3a6b 0%, #2c5f9e 100%);
+      color: #fff;
+    }
+
+    .footer-cta h2 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .footer-cta p {
+      opacity: 0.8;
+      margin-bottom: 32px;
+      font-size: 1rem;
+    }
+
+    .cta-light {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      color: #1a3a6b;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1.05rem;
+      padding: 14px 32px;
+      border-radius: 50px;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+
+    .cta-light:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.2);
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 24px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: var(--light);
+    }
+
+    footer a { color: var(--sky); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <img src="botpic.webp" alt="Trempiada bot mascot">
+    <h1>Trempiada</h1>
+    <p class="tagline">Connecting drivers and hitchhikers along the way — for free, in Israel, on Telegram.</p>
+    <a class="cta" href="https://t.me/TrempiadaBot" target="_blank" rel="noopener">
+      <!-- Telegram paper-plane icon -->
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215L3.944 9.13C2.546 9.726 2.553 10.545 3.683 10.9l4.148 1.295 9.634-6.063c.455-.277.872-.128.53.177l-7.795 7.03-.3 4.38c.44 0 .634-.2.879-.437l2.11-2.044 4.387 3.23c.808.447 1.39.216 1.59-.748l2.874-13.537c.297-1.187-.453-1.724-1.342-1.75z" fill="currentColor"/>
+      </svg>
+      Open in Telegram
+    </a>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <h2>Why Trempiada?</h2>
+    <div class="grid">
+      <div class="card">
+        <span class="icon">🚗</span>
+        <h3>Route-matched rides</h3>
+        <p>Drivers set their route and time. Riders who fit the path get matched automatically — no detour, no hassle.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🛡️</span>
+        <h3>Trust & safety</h3>
+        <p>Drivers verify via phone, photo, and social accounts. No numbers shared, chat stays in the bot, plates masked until confirmed.</p>
+      </div>
+      <div class="card">
+        <span class="icon">⭐</span>
+        <h3>Points economy</h3>
+        <p>Rides are free. Drivers earn points for good ratings, redeemable with partner businesses. Good actors get rewarded.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <!-- <section class="how">
+    <div class="how-inner">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">
+            <h4>Open the bot on Telegram</h4>
+            <p>Start with <code>/start</code> to register in seconds — no app download, no account creation outside Telegram.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            <h4>Offer or request a ride</h4>
+            <p>Use <code>/drive</code> to offer a lift along your route, or <code>/ride</code> to find a driver heading your way.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">
+            <h4>Get matched instantly</h4>
+            <p>The bot finds the best fit by checking real road routes — not just straight-line distance. Both parties confirm with a 4-digit pickup code.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-text">
+            <h4>Ride, rate, repeat</h4>
+            <p>After the ride, both sides rate each other simultaneously so neither can game the system. Good rides build reputation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section> -->
+
+  <!-- Footer CTA -->
+  <section class="footer-cta">
+    <h2>Ready to ride?</h2>
+    <p>Join the community — drivers and hitchhikers welcome.</p>
+    <a class="cta-light" href="https://t.me/TrempiadaBot" target="_blank" rel="noopener">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215L3.944 9.13C2.546 9.726 2.553 10.545 3.683 10.9l4.148 1.295 9.634-6.063c.455-.277.872-.128.53.177l-7.795 7.03-.3 4.38c.44 0 .634-.2.879-.437l2.11-2.044 4.387 3.23c.808.447 1.39.216 1.59-.748l2.874-13.537c.297-1.187-.453-1.724-1.342-1.75z" fill="currentColor"/>
+      </svg>
+      Start with @TrempiadaBot
+    </a>
+  </section>
+
+  <footer>
+    Built with love in Israel &nbsp;·&nbsp;
+    <a href="https://github.com/kwikwag/trempiada" target="_blank" rel="noopener">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="privacy.html">Privacy Policy</a>
+  </footer>
+
+</body>
+</html>

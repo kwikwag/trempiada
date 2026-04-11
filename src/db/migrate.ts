@@ -172,7 +172,7 @@ export function initDatabase(dbPath: string): Database.Database {
 
 // Run directly: ts-node src/db/migrate.ts
 if (require.main === module) {
-  const dbPath = process.env.DATABASE_PATH || "./data/trempbot.db";
+  const dbPath = process.env.DATABASE_PATH || "./data/rides.db";
   console.log(`Initializing database at ${dbPath}...`);
   const db = initDatabase(dbPath);
   console.log("Database initialized successfully.");

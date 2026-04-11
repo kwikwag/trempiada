@@ -219,6 +219,39 @@ export class Repository {
     this.db.prepare("UPDATE users SET is_suspended = 1 WHERE id = ?").run(userId);
   }
 
+  /**
+   * Anonymise a user's personal data in-place (right to erasure).
+   * Keeps the row skeleton and telegram_id so historical match/rating
+   * FK references remain intact and the account cannot be silently re-created.
+   * Deletes trust_verifications (which hold external refs / social handles).
+   * Nulls out car plate and photo but keeps the make/model for ride records.
+   */
+  anonymizeUser(userId: number): void {
+    this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE users SET
+          first_name    = 'Deleted User',
+          gender        = NULL,
+          photo_file_id = NULL,
+          phone         = NULL,
+          trust_score   = 0,
+          is_suspended  = 1
+        WHERE id = ?
+      `).run(userId);
+
+      this.db.prepare(
+        "DELETE FROM trust_verifications WHERE user_id = ?"
+      ).run(userId);
+
+      this.db.prepare(`
+        UPDATE cars SET
+          plate_number  = 'DELETED',
+          photo_file_id = NULL
+        WHERE user_id = ?
+      `).run(userId);
+    })();
+  }
+
   // ---- Trust Verifications ----
 
   addVerification(

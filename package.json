@@ -1,5 +1,5 @@
 {
-  "name": "trempbot",
+  "name": "trempiada-bot",
   "version": "0.1.0",
   "description": "Telegram ridesharing bot for Israel",
   "main": "dist/index.js",

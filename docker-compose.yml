@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_PATH: /app/data/trempbot.db
+      DATABASE_PATH: /app/data/rides.db
       OSRM_URL: http://osrm:5000
     volumes:
       - bot_data:/app/data
@@ -33,4 +33,4 @@ volumes:
   bot_data:
   osrm_data:
     external: true
-    name: trempbot_osrm_data
+    name: rides_osrm_data

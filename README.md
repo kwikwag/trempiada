@@ -1,4 +1,4 @@
-# TrempBot 🚗
+# TrempiadaBot 🚗
 
 A Telegram-based ridesharing bot for Israel that connects drivers with hitchhikers along their routes.
 
@@ -6,8 +6,8 @@ A Telegram-based ridesharing bot for Israel that connects drivers with hitchhike
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Telegram    │◄───►│  TrempBot    │◄───►│   SQLite    │
-│  Bot API     │     │  (Node.js)   │     │   Database  │
+│  Telegram   │◄───►│     Bot      │◄───►│   SQLite    │
+│  Bot API    │     │  (Node.js)   │     │   Database  │
 └─────────────┘     └──────┬───────┘     └─────────────┘
                            │
                     ┌──────┴───────┐
@@ -38,7 +38,7 @@ A Telegram-based ridesharing bot for Israel that connects drivers with hitchhike
 
 ```bash
 git clone <repo>
-cd trempbot
+cd trempiada
 npm install
 ```
 
@@ -158,7 +158,7 @@ src/
 - [ ] Waze link parsing for route import
 - [ ] OAuth flows for social verification (Facebook, LinkedIn, Google)
 - [ ] "Share ride" web page for safety
-- [ ] Admin dashboard for dispute resolution
+- [ ] Admin dashboard for dispute resolution and account suspension management
 - [ ] Push notification tuning
 - [ ] Rate limiting and abuse detection refinements
 - [ ] Hebrew localization

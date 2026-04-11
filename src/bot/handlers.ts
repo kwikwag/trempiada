@@ -51,7 +51,7 @@ export function registerHandlers(
     // Start registration
     sessions.setScene(telegramId, "registration_name", {});
     await ctx.reply(
-      `Hey! 👋 Welcome to TrempBot.\n\n` +
+      `Hey! 👋 Welcome to TrempiadaBot.\n\n` +
       `We connect drivers with people looking for a ride along their route.\n\n` +
       `Let's get you set up — it takes about 30 seconds.\n\n` +
       `What's your first name? (This is what others will see.)`
@@ -248,7 +248,9 @@ export function registerHandlers(
     // Log the SOS event — do NOT notify the other party
     if (activeMatch) {
       console.warn(`SOS triggered: match=${activeMatch.id}, user=${session.userId}, time=${new Date().toISOString()}`);
-      // TODO: persist SOS events to a dedicated table for review
+      // TODO(privacy/legal): persist SOS events to a dedicated `sos_events` table
+      // (user_id, match_id, triggered_at). Required for audit trail under Israeli
+      // Privacy Protection Law and for dispute escalation. See privacy backlog #1.
     }
   });
 
@@ -277,6 +279,70 @@ export function registerHandlers(
     }
 
     await ctx.reply(statusText);
+  });
+
+  // ============================================================
+  // /delete — Request account deletion (GDPR / Privacy Law right to erasure)
+  // ============================================================
+  bot.command("delete", async (ctx) => {
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+
+    if (!session.userId) {
+      await ctx.reply("You don't have a registered account.");
+      return;
+    }
+
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    if (activeMatch) {
+      await ctx.reply(
+        "You have an active ride right now. Please /cancel it before deleting your account."
+      );
+      return;
+    }
+
+    await ctx.reply(
+      "⚠️ Delete your account?\n\n" +
+      "This will permanently remove your name, photo, phone number, verifications, " +
+      "and car details.\n\n" +
+      "Anonymised ride history is kept for legal and dispute-resolution purposes, " +
+      "as permitted under Israeli Privacy Protection Law.\n\n" +
+      "This cannot be undone.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Yes, delete my account", "delete_confirm")],
+        [Markup.button.callback("Cancel", "delete_cancel")],
+      ])
+    );
+  });
+
+  bot.action("delete_confirm", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+
+    if (!session.userId) return;
+
+    // Re-check no active match (race condition guard)
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    if (activeMatch) {
+      await ctx.editMessageText(
+        "You have an active ride. Please /cancel it before deleting your account."
+      );
+      return;
+    }
+
+    repo.anonymizeUser(session.userId);
+    sessions.reset(telegramId);
+
+    await ctx.editMessageText(
+      "Your account has been deleted. Your personal data has been removed.\n\n" +
+      "Thank you for using TrempiadaBot."
+    );
+  });
+
+  bot.action("delete_cancel", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText("Account deletion cancelled. You're still with us! 👋");
   });
 
   // ============================================================
@@ -816,8 +882,8 @@ export function registerHandlers(
       await ctx.reply(
         "No riders along your route right now.\n" +
         "I'll notify you if someone matches before you depart.\n\n" +
-        "💡 Share your invite link to get more people on TrempBot:\n" +
-        `t.me/TrempBot?start=ref_${session.userId}`
+        "💡 Share your invite link to get more people on TrempiadaBot:\n" +
+        `t.me/TrempiadaBot?start=ref_${session.userId}`
       );
       sessions.reset(telegramId);
       return;
