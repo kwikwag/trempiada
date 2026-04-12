@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${SKIP_PRECOMMIT:-}" = "1" ]; then
+  echo "Skipping pre-commit checks because SKIP_PRECOMMIT=1"
+  exit 0
+fi
+
+if ! command -v npm >/dev/null 2>&1 && [ -s "$HOME/.nvm/nvm.sh" ]; then
+  NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  . "$NVM_DIR/nvm.sh"
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm is required to run pre-commit checks." >&2
+  exit 1
+fi
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -n "$staged_files" ]; then
+  git diff --cached --check
+
+  echo "$staged_files" | while IFS= read -r file; do
+    [ -n "$file" ] || continue
+
+    case "$file" in
+      .env|*/.env|*.pem|*.key|*.p12|*.pfx)
+        echo "Refusing to commit sensitive-looking file: $file" >&2
+        exit 1
+        ;;
+    esac
+
+    size=$(git cat-file -s ":$file")
+    if [ "$size" -gt 512000 ]; then
+      echo "Refusing to commit a large file: $file" >&2
+      exit 1
+    fi
+  done
+fi
+
+npm run typecheck
+npm run lint
+npm test

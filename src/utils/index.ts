@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import type { User, TrustVerification, Car, Match, DEFAULTS } from "../types";
+import type { User, TrustVerification, Car } from "../types";
 
 /** Generate a random N-digit numeric code */
 export function generateCode(length: number = 4): string {

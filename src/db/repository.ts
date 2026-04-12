@@ -3,7 +3,6 @@ import type {
   User, Car, Ride, RideRequest, Match, Rating,
   TrustVerification, Dispute, Gender, VerificationType,
   CancellationReason, MatchStatus, RideStatus, RequestStatus,
-  POINTS, DEFAULTS,
 } from "../types";
 
 // ---- Private DB row interfaces (snake_case column names) ----

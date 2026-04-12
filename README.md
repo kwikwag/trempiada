@@ -90,6 +90,25 @@ npm run build
 node dist/index.js
 ```
 
+## Development Checks
+
+`npm install` configures the repository to use the checked-in Git hooks under `.githooks/`.
+If hooks are not active in an existing checkout, run:
+
+```bash
+npm run hooks:install
+```
+
+The pre-commit hook rejects likely secrets, large staged files, and merge conflict
+markers, then runs:
+
+```bash
+npm run typecheck
+npm test
+```
+
+For emergency commits only, bypass it with `SKIP_PRECOMMIT=1 git commit ...`.
+
 ## Bot Commands
 
 | Command   | Description                              |

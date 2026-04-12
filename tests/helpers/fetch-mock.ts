@@ -1,4 +1,5 @@
 type FetchHandler = () => object;
+type FetchInput = Parameters<typeof global.fetch>[0];
 
 /**
  * Replace global.fetch for the duration of `fn`, routing calls by URL substring.
@@ -9,7 +10,7 @@ export async function withFetch<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const saved = global.fetch;
-  global.fetch = (async (input: RequestInfo | URL) => {
+  global.fetch = (async (input: FetchInput) => {
     const url = input.toString();
     for (const [pattern, handler] of Object.entries(routes)) {
       if (url.includes(pattern)) {

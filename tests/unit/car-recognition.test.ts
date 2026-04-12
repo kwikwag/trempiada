@@ -6,6 +6,8 @@ import { DEFAULTS } from "../../src/types";
 import { createTempLicenseDb } from "../helpers/license-db";
 import { withFetch } from "../helpers/fetch-mock";
 
+type FetchInput = Parameters<typeof global.fetch>[0];
+
 // 457-11-302 stripped to digits
 const TEST_PLATE_NO = 45711302;
 
@@ -178,7 +180,7 @@ test("extractFromTelegramPhoto returns null when download fails", async () => {
   let callCount = 0;
 
   const saved = global.fetch;
-  global.fetch = (async (input: RequestInfo | URL) => {
+  global.fetch = (async (_input: FetchInput) => {
     callCount++;
     if (callCount === 1) {
       return { ok: true, json: async () => telegramFileResponse("photos/file.jpg") } as unknown as Response;
@@ -201,7 +203,7 @@ test("extractFromTelegramPhoto chains Telegram download into analyzeCarImage", a
   );
 
   const saved = global.fetch;
-  global.fetch = (async (input: RequestInfo | URL) => {
+  global.fetch = (async (input: FetchInput) => {
     const url = input.toString();
     if (url.includes("getFile"))          return { ok: true, json: async () => telegramFileResponse("photos/file.jpg") } as unknown as Response;
     if (url.includes("file/bot"))         return { ok: true, arrayBuffer: async () => jpegHeader.buffer } as unknown as Response;

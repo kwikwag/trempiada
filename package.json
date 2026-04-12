@@ -6,10 +6,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "lint": "eslint .",
     "migrate": "ts-node src/db/migrate.ts",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && npm run hooks:install || true",
     "test": "node --test -r ts-node/register/transpile-only 'tests/unit/**/*.test.ts'",
     "test:e2e": "node --test -r ts-node/register/transpile-only 'tests/e2e/**/*.test.ts'",
-    "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,e2e}/**/*.test.ts'"
+    "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,e2e}/**/*.test.ts'",
+    "test:unit": "npm test",
+    "typecheck": "tsc -p tsconfig.check.json --noEmit"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -18,9 +23,13 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.17",
+    "eslint": "^10.2.0",
+    "globals": "^17.4.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.1"
   }
 }

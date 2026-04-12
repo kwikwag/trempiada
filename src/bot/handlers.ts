@@ -1,5 +1,4 @@
 import { Telegraf, Markup } from "telegraf";
-import type { Context } from "telegraf";
 import type { Repository } from "../db/repository";
 import type { SessionManager } from "./session";
 import type { MatchingService, MatchCandidate } from "../services/matching";
@@ -10,7 +9,7 @@ import { DEFAULTS, POINTS } from "../types";
 import type { VerificationType } from "../types";
 import {
   formatTrustProfile, formatCarInfo, formatRideSummary,
-  formatMatchForRider, formatDuration, generateCode,
+  formatDuration, generateCode,
 } from "../utils";
 
 /**
@@ -448,7 +447,7 @@ export function registerHandlers(
               otherUser.telegramId,
               `💬 ${thisUser.firstName}: ${ctx.message.text}`
             );
-          } catch (err) {
+          } catch {
             await ctx.reply("Couldn't relay your message. The other party may have blocked the bot.");
           }
           return;
@@ -957,7 +956,6 @@ export function registerHandlers(
       }
 
       // Notify all matching drivers
-      const rider = repo.getUserById(session.userId);
       let notified = 0;
       for (const c of candidates) {
         const driver = repo.getUserById(c.ride.driverId);
@@ -1057,7 +1055,7 @@ export function registerHandlers(
     if (!session.userId) return;
 
     const candidates: MatchCandidate[] = session.data.candidates || [];
-    let idx: number = (session.data.candidateIndex ?? 0) + 1;
+    const idx: number = (session.data.candidateIndex ?? 0) + 1;
 
     if (idx >= candidates.length) {
       sessions.reset(telegramId);
@@ -1188,7 +1186,9 @@ export function registerHandlers(
               `Thanks! ${rider?.firstName} rated you ⭐${driverRating.score}.\n` +
               `You earned ${pts} points. Balance: ${repo.getPointsBalance(driver.id).toFixed(1)} pts.`
             );
-          } catch {}
+          } catch {
+            // Notification failures should not block rating completion.
+          }
         }
 
         if (rider && riderRating) {
@@ -1199,7 +1199,9 @@ export function registerHandlers(
               `Thanks! ${driver?.firstName} rated you ⭐${riderRating.score}.\n` +
               `You earned ${pts} points. Balance: ${repo.getPointsBalance(rider.id).toFixed(1)} pts.`
             );
-          } catch {}
+          } catch {
+            // Notification failures should not block rating completion.
+          }
         }
       } else {
         await ctx.editMessageText(

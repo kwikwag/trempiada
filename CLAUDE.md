@@ -20,8 +20,6 @@ npm run migrate      # Initialize/migrate database
 npx tsc --noEmit     # Type-check without emitting
 ```
 
-Node is available at `~/.nvm/versions/node/v22.15.0/bin/node`
-
 ## Architecture
 
 Single-process monolith. No microservices, no message queues.
