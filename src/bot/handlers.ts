@@ -1,10 +1,12 @@
 import { Telegraf, Markup } from "telegraf";
+import type { Context } from "telegraf";
 import type { Repository } from "../db/repository";
 import type { SessionManager } from "./session";
 import type { MatchingService, MatchCandidate } from "../services/matching";
 import type { RoutingService } from "../services/routing";
 import type { CarRecognitionService } from "../services/car-recognition";
 import type { GeocodingService } from "../services/geocoding";
+import { WazeService, extractWazeDriveUrl } from "../services/waze";
 import { DEFAULTS, POINTS } from "../types";
 import type { VerificationType } from "../types";
 import {
@@ -31,6 +33,146 @@ export function registerHandlers(
   carRecognition: CarRecognitionService,
   geocoding: GeocodingService,
 ) {
+  const waze = new WazeService();
+
+  async function createWazeDriveFromUrl(
+    ctx: Context,
+    telegramId: number,
+    wazeUrl: string,
+  ): Promise<boolean> {
+    const session = sessions.get(telegramId);
+
+    if (!session.userId) {
+      sessions.setScene(telegramId, "registration_name", { pendingWazeDriveUrl: wazeUrl });
+      await ctx.reply(
+        "I can post that Waze drive for you. First, let's set up your account.\n\n" +
+          "What's your first name? (This is what others will see.)",
+      );
+      return true;
+    }
+
+    const user = repo.getUserById(session.userId);
+    if (!user || user.isSuspended) {
+      await ctx.reply("Your account is currently suspended. Contact support for help.");
+      return true;
+    }
+
+    const car = repo.getActiveCar(session.userId);
+    if (!car) {
+      sessions.setScene(telegramId, "car_registration_photo", { pendingWazeDriveUrl: wazeUrl });
+      await ctx.reply(
+        "I saved the Waze drive. First time driving? Let's register your car.\n\n" +
+          "Send me a photo of the back of your car so the license plate is visible.",
+      );
+      return true;
+    }
+
+    const verCount = repo.getVerificationCount(session.userId);
+    if (verCount < DEFAULTS.MIN_TRUST_VERIFICATIONS) {
+      sessions.setScene(telegramId, "registration_verification", {
+        returnTo: "waze_drive",
+        pendingWazeDriveUrl: wazeUrl,
+      });
+      await ctx.reply(
+        "I saved the Waze drive. Drivers need at least one identity verification before posting rides.\n\n" +
+          "Choose a verification method:",
+        Markup.inlineKeyboard([
+          [Markup.button.callback("Facebook", "verify_facebook")],
+          [Markup.button.callback("LinkedIn", "verify_linkedin")],
+          [Markup.button.callback("Google", "verify_google")],
+          [Markup.button.callback("Email", "verify_email")],
+        ]),
+      );
+      return true;
+    }
+
+    await ctx.reply("Importing your Waze drive...");
+
+    const drive = await waze.getDriveInfo(wazeUrl);
+    if (!drive) {
+      await ctx.reply(
+        "I couldn't read that Waze drive. Make sure the link is a live Waze drive URL and try again.",
+      );
+      return true;
+    }
+
+    const ride = repo.createRide({
+      driverId: session.userId,
+      carId: car.id,
+      originLat: drive.originLat,
+      originLng: drive.originLng,
+      destLat: drive.destLat,
+      destLng: drive.destLng,
+      originLabel: drive.originLabel,
+      destLabel: drive.destLabel,
+      routeGeometry: null,
+      estimatedDuration: drive.etaSeconds,
+      departureTime: new Date().toISOString(),
+      maxDetourMinutes: DEFAULTS.MAX_DETOUR_MINUTES,
+      availableSeats: car.seatCount,
+    });
+
+    await ctx.reply(
+      "Waze drive posted! ✅\n\n" +
+        formatRideSummary(
+          drive.originLabel,
+          drive.destLabel,
+          drive.etaSeconds,
+          ride.departureTime,
+          car.seatCount,
+          DEFAULTS.MAX_DETOUR_MINUTES,
+        ) +
+        "\n\nSearching for riders...",
+    );
+
+    const candidates = await matching.findRidersForDriver(ride);
+    if (candidates.length === 0) {
+      await ctx.reply(
+        "No riders along your route right now.\n" +
+          "I'll notify you if someone matches before you arrive.\n\n" +
+          "💡 Share your invite link to get more people on TrempiadaBot:\n" +
+          `t.me/TrempiadaBot?start=ref_${session.userId}`,
+      );
+      sessions.setScene(telegramId, "idle", {});
+      return true;
+    }
+
+    const candidate = candidates[0];
+    const rider = repo.getUserById(candidate.request.riderId);
+    if (!rider) {
+      sessions.setScene(telegramId, "idle", {});
+      return true;
+    }
+
+    const riderVerifications = repo.getPublicVerifications(rider.id);
+
+    await ctx.reply(
+      `Found ${candidates.length} rider${candidates.length > 1 ? "s" : ""} along your route!\n\n` +
+        `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
+        formatTrustProfile(rider, riderVerifications, true) +
+        `\n` +
+        `📍 Pickup: ${candidate.request.pickupLabel}\n` +
+        `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
+        `↩️ Detour: ~${formatDuration(candidate.detour.addedSeconds)}`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            `Accept ${rider.firstName}`,
+            `accept_rider_${candidate.request.id}`,
+          ),
+        ],
+        [Markup.button.callback("Skip", `skip_rider_${candidate.request.id}`)],
+      ]),
+    );
+
+    sessions.setScene(telegramId, "idle", {
+      rideId: ride.id,
+      candidates,
+      candidateIndex: 0,
+    });
+    return true;
+  }
+
   // ============================================================
   // /start — Entry point, begin registration or welcome back
   // ============================================================
@@ -451,6 +593,14 @@ export function registerHandlers(
       }
     }
 
+    if ("text" in ctx.message) {
+      const wazeUrl = extractWazeDriveUrl(ctx.message.text);
+      if (wazeUrl) {
+        await createWazeDriveFromUrl(ctx, telegramId, wazeUrl);
+        return;
+      }
+    }
+
     // --- Registration: name ---
     if (session.scene === "registration_name" && "text" in ctx.message) {
       const firstName = ctx.message.text.trim();
@@ -502,6 +652,10 @@ export function registerHandlers(
           `Type /drive to offer a ride, /ride to request one, ` +
           `or /trust to boost your verification.`,
       );
+
+      if (session.data.pendingWazeDriveUrl) {
+        await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
+      }
       return;
     }
 
@@ -795,6 +949,12 @@ export function registerHandlers(
     );
 
     repo.addVerification(session.userId, "car");
+
+    if (session.data.pendingWazeDriveUrl) {
+      await ctx.editMessageText(`Car registered! ✅\n\n` + formatCarInfo(car));
+      await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
+      return;
+    }
 
     await ctx.editMessageText(
       `Car registered! ✅\n\n` + formatCarInfo(car) + `\n\n` + `Type /drive again to offer a ride.`,
