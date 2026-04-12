@@ -51,10 +51,7 @@ test("LicenseLookupService rejects invalid plate numbers", () => {
   const service = new LicenseLookupService(dbPath);
 
   try {
-    assert.throws(
-      () => service.getByLicensePlateNumber("123456"),
-      /Expected 7 or 8 digits/
-    );
+    assert.throws(() => service.getByLicensePlateNumber("123456"), /Expected 7 or 8 digits/);
   } finally {
     service.close();
     cleanup();

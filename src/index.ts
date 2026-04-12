@@ -40,7 +40,12 @@ async function main() {
   const routing = new RoutingService(OSRM_URL);
   const matching = new MatchingService(repo, routing);
   const licenseLookup = new LicenseLookupService(LICENSE_DATABASE_PATH);
-  const carRecognition = new CarRecognitionService(GEMINI_API_KEY, BOT_TOKEN, licenseLookup, process.env.GEMINI_MODEL);
+  const carRecognition = new CarRecognitionService(
+    GEMINI_API_KEY,
+    BOT_TOKEN,
+    licenseLookup,
+    process.env.GEMINI_MODEL,
+  );
   const geocoding = new GeocodingService();
 
   // --- Initialize bot ---

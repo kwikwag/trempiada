@@ -47,7 +47,7 @@ src/
 - **Bot state machine**: Each Telegram user has a `SessionState` with a `scene` (current flow step) and `data` (temporary state). Sessions are in-memory; losing them on restart just restarts the user's current flow.
 - **Matching algorithm**: Quick-filter candidates by haversine distance + time window, then OSRM detour calculation for accurate results. Ranked by least detour.
 - **Points economy**: Rides are free. Drivers earn 2 pts (rating ≥4) or 1 pt (rating <4). Riders earn 0.5/0.2. New users get 5 pts. No real money touches the system.
-- **Trust model**: Drivers must complete ≥1 verification. Each verification is stored in DB; drivers control which are *visible* to riders vs just verified by the system.
+- **Trust model**: Drivers must complete ≥1 verification. Each verification is stored in DB; drivers control which are _visible_ to riders vs just verified by the system.
 - **Message relay**: During active rides, non-command messages forwarded between parties through the bot (no personal contact shared).
 - **Anti-gaming**: Min 5km ride distance, same-pair 24h cooldown, cancellation tracking, simultaneous rating reveal.
 
@@ -81,8 +81,8 @@ OSRM_URL=            # Default: http://localhost:5000
 
 ## Ideas
 
-  - Vouch system: only allow users into the app from an invite link they receive from another user. The invite is one-time. Users are allowed to invite N people per time window to throttle growth and prevent abuse. The users are required to vouch for the people they invite. This way we obtain a trust graph network.
-  - Downloading the databases at:
-    1. https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/053cea08-09bc-40ec-8f7a-156f0677aff3
-    2. https://data.gov.il/he/datasets/ministry_of_transport/degem-rechev-wltp/142afde2-6228-49f9-8a29-9b6c3a0cbe40
-    And use scripts/build_vehicle_l
+- Vouch system: only allow users into the app from an invite link they receive from another user. The invite is one-time. Users are allowed to invite N people per time window to throttle growth and prevent abuse. The users are required to vouch for the people they invite. This way we obtain a trust graph network.
+- Downloading the databases at:
+  1. https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/053cea08-09bc-40ec-8f7a-156f0677aff3
+  2. https://data.gov.il/he/datasets/ministry_of_transport/degem-rechev-wltp/142afde2-6228-49f9-8a29-9b6c3a0cbe40
+     And use scripts/build_vehicle_l

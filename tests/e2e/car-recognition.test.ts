@@ -19,8 +19,8 @@ loadEnv({ path: join(__dirname, "../../.env") });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const LICENSE_DB_PATH = join(__dirname, "../../data/licenses.db");
-const FIXTURE_IMAGE   = join(__dirname, "fixtures/test.jpg");
-const TEST_PLATE_NO   = 45711302; // 457-11-302
+const FIXTURE_IMAGE = join(__dirname, "fixtures/test.jpg");
+const TEST_PLATE_NO = 45711302; // 457-11-302
 
 const skip = !GEMINI_API_KEY ? "GEMINI_API_KEY not set" : false;
 
@@ -46,9 +46,9 @@ test("e2e: enriches Gemini output with real license DB", { skip }, async () => {
     assert.ok(result, "expected car details");
     assert.equal(result.plateNumber, String(TEST_PLATE_NO));
     // DB values (Hebrew strings from Israeli vehicle registry)
-    assert.equal(result.make,      "אודי מכסיקו");
-    assert.equal(result.color,     "שחור");
-    assert.equal(result.year,      2021);
+    assert.equal(result.make, "אודי מכסיקו");
+    assert.equal(result.color, "שחור");
+    assert.equal(result.year, 2021);
     assert.equal(result.seatCount, 5);
   } finally {
     lookup.close();

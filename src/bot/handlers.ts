@@ -8,8 +8,11 @@ import type { GeocodingService } from "../services/geocoding";
 import { DEFAULTS, POINTS } from "../types";
 import type { VerificationType } from "../types";
 import {
-  formatTrustProfile, formatCarInfo, formatRideSummary,
-  formatDuration, generateCode,
+  formatTrustProfile,
+  formatCarInfo,
+  formatRideSummary,
+  formatDuration,
+  generateCode,
 } from "../utils";
 
 /**
@@ -28,7 +31,6 @@ export function registerHandlers(
   carRecognition: CarRecognitionService,
   geocoding: GeocodingService,
 ) {
-
   // ============================================================
   // /start — Entry point, begin registration or welcome back
   // ============================================================
@@ -41,8 +43,8 @@ export function registerHandlers(
       sessions.setScene(telegramId, "idle");
       await ctx.reply(
         `Welcome back, ${existing.firstName}! 👋\n\n` +
-        `Type /drive to offer a ride, /ride to request one, ` +
-        `or /trust to manage your verification profile.`
+          `Type /drive to offer a ride, /ride to request one, ` +
+          `or /trust to manage your verification profile.`,
       );
       return;
     }
@@ -51,9 +53,9 @@ export function registerHandlers(
     sessions.setScene(telegramId, "registration_name", {});
     await ctx.reply(
       `Hey! 👋 Welcome to TrempiadaBot.\n\n` +
-      `We connect drivers with people looking for a ride along their route.\n\n` +
-      `Let's get you set up — it takes about 30 seconds.\n\n` +
-      `What's your first name? (This is what others will see.)`
+        `We connect drivers with people looking for a ride along their route.\n\n` +
+        `Let's get you set up — it takes about 30 seconds.\n\n` +
+        `What's your first name? (This is what others will see.)`,
     );
   });
 
@@ -82,9 +84,9 @@ export function registerHandlers(
       sessions.setScene(telegramId, "car_registration_photo", {});
       await ctx.reply(
         `First time driving? Let's register your car.\n\n` +
-        `Send me a photo of the back of your car ` +
-        `(so the license plate is visible). ` +
-        `I'll grab the details automatically.`
+          `Send me a photo of the back of your car ` +
+          `(so the license plate is visible). ` +
+          `I'll grab the details automatically.`,
       );
       return;
     }
@@ -97,14 +99,14 @@ export function registerHandlers(
       });
       await ctx.reply(
         `Drivers need at least one identity verification ` +
-        `to offer rides. This helps riders feel safe.\n\n` +
-        `Choose a verification method:`,
+          `to offer rides. This helps riders feel safe.\n\n` +
+          `Choose a verification method:`,
         Markup.inlineKeyboard([
           [Markup.button.callback("Facebook", "verify_facebook")],
           [Markup.button.callback("LinkedIn", "verify_linkedin")],
           [Markup.button.callback("Google", "verify_google")],
           [Markup.button.callback("Email", "verify_email")],
-        ])
+        ]),
       );
       return;
     }
@@ -117,9 +119,9 @@ export function registerHandlers(
     });
     await ctx.reply(
       `Where are you headed?\n\n` +
-      `Send me your starting point — you can:\n` +
-      `📍 Drop a pin (tap the attachment icon)\n` +
-      `✍️ Type an address or place name`
+        `Send me your starting point — you can:\n` +
+        `📍 Drop a pin (tap the attachment icon)\n` +
+        `✍️ Type an address or place name`,
     );
   });
 
@@ -136,10 +138,7 @@ export function registerHandlers(
     }
 
     sessions.setScene(telegramId, "request_pickup", {});
-    await ctx.reply(
-      `Where do you need to be picked up?\n\n` +
-      `📍 Drop a pin or type an address.`
-    );
+    await ctx.reply(`Where do you need to be picked up?\n\n` + `📍 Drop a pin or type an address.`);
   });
 
   // ============================================================
@@ -170,7 +169,7 @@ export function registerHandlers(
         [Markup.button.callback("Other party didn't show", "cancel_no_show")],
         [Markup.button.callback("Felt unsafe", "cancel_felt_unsafe")],
         [Markup.button.callback("Other reason", "cancel_other")],
-      ])
+      ]),
     );
   });
 
@@ -190,7 +189,7 @@ export function registerHandlers(
     const verifications = repo.getVerifications(session.userId);
     const profile = formatTrustProfile(user, verifications, false);
 
-    const verifiedTypes = new Set(verifications.map(v => v.type));
+    const verifiedTypes = new Set(verifications.map((v) => v.type));
     const buttons = [];
 
     if (!verifiedTypes.has("facebook"))
@@ -209,16 +208,16 @@ export function registerHandlers(
         buttons.push([
           Markup.button.callback(
             `${icon} ${v.type} — ${v.sharedWithRiders ? "visible to riders" : "hidden"}`,
-            `toggle_vis_${v.type}`
-          )
+            `toggle_vis_${v.type}`,
+          ),
         ]);
       }
     }
 
     await ctx.reply(
       `Your trust profile:\n\n${profile}\n\n` +
-      (buttons.length > 0 ? `Manage your verifications:` : `All verifications complete!`),
-      buttons.length > 0 ? Markup.inlineKeyboard(buttons) : undefined
+        (buttons.length > 0 ? `Manage your verifications:` : `All verifications complete!`),
+      buttons.length > 0 ? Markup.inlineKeyboard(buttons) : undefined,
     );
   });
 
@@ -235,18 +234,18 @@ export function registerHandlers(
 
     await ctx.reply(
       `📍 Your ride details have been saved.\n\n` +
-      `🚨 Emergency: call 100 (Israel Police)\n` +
-      `🚑 Ambulance: 101\n\n` +
-      `If you need to share your situation with someone you trust, ` +
-      `send them this chat right now.`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("I'm OK, false alarm", "sos_ok")],
-      ])
+        `🚨 Emergency: call 100 (Israel Police)\n` +
+        `🚑 Ambulance: 101\n\n` +
+        `If you need to share your situation with someone you trust, ` +
+        `send them this chat right now.`,
+      Markup.inlineKeyboard([[Markup.button.callback("I'm OK, false alarm", "sos_ok")]]),
     );
 
     // Log the SOS event — do NOT notify the other party
     if (activeMatch) {
-      console.warn(`SOS triggered: match=${activeMatch.id}, user=${session.userId}, time=${new Date().toISOString()}`);
+      console.warn(
+        `SOS triggered: match=${activeMatch.id}, user=${session.userId}, time=${new Date().toISOString()}`,
+      );
       // TODO(privacy/legal): persist SOS events to a dedicated `sos_events` table
       // (user_id, match_id, triggered_at). Required for audit trail under Israeli
       // Privacy Protection Law and for dispute escalation. See privacy backlog #1.
@@ -295,22 +294,22 @@ export function registerHandlers(
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (activeMatch) {
       await ctx.reply(
-        "You have an active ride right now. Please /cancel it before deleting your account."
+        "You have an active ride right now. Please /cancel it before deleting your account.",
       );
       return;
     }
 
     await ctx.reply(
       "⚠️ Delete your account?\n\n" +
-      "This will permanently remove your name, photo, phone number, verifications, " +
-      "and car details.\n\n" +
-      "Anonymised ride history is kept for legal and dispute-resolution purposes, " +
-      "as permitted under Israeli Privacy Protection Law.\n\n" +
-      "This cannot be undone.",
+        "This will permanently remove your name, photo, phone number, verifications, " +
+        "and car details.\n\n" +
+        "Anonymised ride history is kept for legal and dispute-resolution purposes, " +
+        "as permitted under Israeli Privacy Protection Law.\n\n" +
+        "This cannot be undone.",
       Markup.inlineKeyboard([
         [Markup.button.callback("Yes, delete my account", "delete_confirm")],
         [Markup.button.callback("Cancel", "delete_cancel")],
-      ])
+      ]),
     );
   });
 
@@ -325,7 +324,7 @@ export function registerHandlers(
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (activeMatch) {
       await ctx.editMessageText(
-        "You have an active ride. Please /cancel it before deleting your account."
+        "You have an active ride. Please /cancel it before deleting your account.",
       );
       return;
     }
@@ -335,7 +334,7 @@ export function registerHandlers(
 
     await ctx.editMessageText(
       "Your account has been deleted. Your personal data has been removed.\n\n" +
-      "Thank you for using TrempiadaBot."
+        "Thank you for using TrempiadaBot.",
     );
   });
 
@@ -364,21 +363,18 @@ export function registerHandlers(
       repo.cancelMatch(matchId, session.userId, reason);
 
       // Determine the other party
-      const otherUserId = match.driverId === session.userId
-        ? match.riderId
-        : match.driverId;
+      const otherUserId = match.driverId === session.userId ? match.riderId : match.driverId;
       const otherUser = repo.getUserById(otherUserId);
 
       // Handle no-show compensation
       if (reason === "no_show") {
         repo.adjustPoints(session.userId, POINTS.NO_SHOW_COMPENSATION);
         await ctx.reply(
-          `Ride cancelled (no-show). You've been awarded ${POINTS.NO_SHOW_COMPENSATION} point for your time.`
+          `Ride cancelled (no-show). You've been awarded ${POINTS.NO_SHOW_COMPENSATION} point for your time.`,
         );
       } else if (reason === "felt_unsafe") {
         await ctx.reply(
-          `Ride cancelled. This has been logged for review. ` +
-          `No penalty applied to you.`
+          `Ride cancelled. This has been logged for review. ` + `No penalty applied to you.`,
         );
       } else {
         await ctx.reply(`Ride cancelled.`);
@@ -391,9 +387,9 @@ export function registerHandlers(
           await ctx.telegram.sendMessage(
             otherUser.telegramId,
             `⚠️ Your ride has been cancelled by the other party.\n` +
-            (reason === "no_show"
-              ? `Reason: they reported you didn't show up.\nIf this was a mistake, type /dispute.`
-              : ``)
+              (reason === "no_show"
+                ? `Reason: they reported you didn't show up.\nIf this was a mistake, type /dispute.`
+                : ``),
           );
         } catch (err) {
           console.error("Failed to notify other party:", err);
@@ -413,14 +409,14 @@ export function registerHandlers(
 
     const type = ctx.match![1] as VerificationType;
     const verifications = repo.getVerifications(session.userId);
-    const v = verifications.find(v => v.type === type);
+    const v = verifications.find((v) => v.type === type);
     if (!v) return;
 
     repo.setVerificationVisibility(session.userId, type, !v.sharedWithRiders);
     const newState = !v.sharedWithRiders ? "visible to riders" : "hidden from riders";
 
     await ctx.editMessageText(
-      `${type} verification is now ${newState}.\n\nType /trust to see your full profile.`
+      `${type} verification is now ${newState}.\n\nType /trust to see your full profile.`,
     );
   });
 
@@ -435,9 +431,7 @@ export function registerHandlers(
     if (session.scene === "in_ride_relay" && session.userId) {
       const match = repo.getActiveMatchForUser(session.userId);
       if (match) {
-        const otherUserId = match.driverId === session.userId
-          ? match.riderId
-          : match.driverId;
+        const otherUserId = match.driverId === session.userId ? match.riderId : match.driverId;
         const otherUser = repo.getUserById(otherUserId);
         const thisUser = repo.getUserById(session.userId);
 
@@ -445,10 +439,12 @@ export function registerHandlers(
           try {
             await ctx.telegram.sendMessage(
               otherUser.telegramId,
-              `💬 ${thisUser.firstName}: ${ctx.message.text}`
+              `💬 ${thisUser.firstName}: ${ctx.message.text}`,
             );
           } catch {
-            await ctx.reply("Couldn't relay your message. The other party may have blocked the bot.");
+            await ctx.reply(
+              "Couldn't relay your message. The other party may have blocked the bot.",
+            );
           }
           return;
         }
@@ -472,7 +468,7 @@ export function registerHandlers(
           [Markup.button.callback("Male", "gender_male")],
           [Markup.button.callback("Female", "gender_female")],
           [Markup.button.callback("Other", "gender_other")],
-        ])
+        ]),
       );
       return;
     }
@@ -502,9 +498,9 @@ export function registerHandlers(
 
       await ctx.reply(
         `You're all set! 🎉\n\n` +
-        `Your trust profile:\n${profile}\n\n` +
-        `Type /drive to offer a ride, /ride to request one, ` +
-        `or /trust to boost your verification.`
+          `Your trust profile:\n${profile}\n\n` +
+          `Type /drive to offer a ride, /ride to request one, ` +
+          `or /trust to boost your verification.`,
       );
       return;
     }
@@ -526,8 +522,8 @@ export function registerHandlers(
       if (!carDetails) {
         await ctx.reply(
           "I couldn't read the car details from that photo. " +
-          "Please try again with a clearer shot of the rear of the car, " +
-          "with the license plate visible."
+            "Please try again with a clearer shot of the rear of the car, " +
+            "with the license plate visible.",
         );
         return;
       }
@@ -540,16 +536,17 @@ export function registerHandlers(
 
       await ctx.reply(
         `Got it! Here's what I found:\n\n` +
-        `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
-        (carDetails.year ? `, ${carDetails.year}` : "") + `\n` +
-        `🔢 Plate: ${carDetails.plateNumber}\n` +
-        `👥 Seats: ${carDetails.seatCount}\n\n` +
-        `Does this look right?`,
+          `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
+          (carDetails.year ? `, ${carDetails.year}` : "") +
+          `\n` +
+          `🔢 Plate: ${carDetails.plateNumber}\n` +
+          `👥 Seats: ${carDetails.seatCount}\n\n` +
+          `Does this look right?`,
         Markup.inlineKeyboard([
           [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
           [Markup.button.callback("Fix something", "car_confirm_edit")],
           [Markup.button.callback("Try another photo", "car_confirm_retry")],
-        ])
+        ]),
       );
       return;
     }
@@ -568,7 +565,7 @@ export function registerHandlers(
         const result = await geocoding.geocode(query);
         if (!result) {
           await ctx.reply(
-            "Couldn't find that address. Try a more specific address, or send a location pin."
+            "Couldn't find that address. Try a more specific address, or send a location pin.",
           );
           return;
         }
@@ -602,7 +599,7 @@ export function registerHandlers(
         const result = await geocoding.geocode(query);
         if (!result) {
           await ctx.reply(
-            "Couldn't find that address. Try a more specific address, or send a location pin."
+            "Couldn't find that address. Try a more specific address, or send a location pin.",
           );
           return;
         }
@@ -628,16 +625,14 @@ export function registerHandlers(
 
       await ctx.reply(
         `${session.data.originLabel} → ${label}\n` +
-        (routeResult
-          ? `🕐 About ${formatDuration(routeResult.durationSeconds)}\n\n`
-          : `\n`) +
-        `When are you leaving?`,
+          (routeResult ? `🕐 About ${formatDuration(routeResult.durationSeconds)}\n\n` : `\n`) +
+          `When are you leaving?`,
         Markup.inlineKeyboard([
           [Markup.button.callback("Now", "depart_now")],
           [Markup.button.callback("In 30 min", "depart_30")],
           [Markup.button.callback("In 1 hour", "depart_60")],
           [Markup.button.callback("Pick a time", "depart_custom")],
-        ])
+        ]),
       );
       return;
     }
@@ -655,14 +650,14 @@ export function registerHandlers(
             "Ride started! ✅ Drive safe.\n\nTap the button below when you've dropped off the rider.",
             Markup.inlineKeyboard([
               [Markup.button.callback("🏁 Complete Ride", `complete_ride_${match.id}`)],
-            ])
+            ]),
           );
 
           if (rider) {
             try {
               await ctx.telegram.sendMessage(
                 rider.telegramId,
-                "Ride started! ✅ Enjoy the ride.\n\nYou can send messages to your driver here."
+                "Ride started! ✅ Enjoy the ride.\n\nYou can send messages to your driver here.",
               );
             } catch (err) {
               console.error("Failed to notify rider:", err);
@@ -678,14 +673,14 @@ export function registerHandlers(
         if (attempts >= DEFAULTS.CONFIRMATION_MAX_ATTEMPTS) {
           await ctx.reply(
             "Too many incorrect attempts. Please confirm with your rider " +
-            "that you've found the right person."
+              "that you've found the right person.",
           );
           return;
         }
 
         await ctx.reply(
           `That code doesn't match. Double-check with your rider.\n` +
-          `(${DEFAULTS.CONFIRMATION_MAX_ATTEMPTS - attempts} attempts remaining)`
+            `(${DEFAULTS.CONFIRMATION_MAX_ATTEMPTS - attempts} attempts remaining)`,
         );
         return;
       }
@@ -703,7 +698,9 @@ export function registerHandlers(
       } else if ("text" in ctx.message) {
         const result = await geocoding.geocode(ctx.message.text.trim());
         if (!result) {
-          await ctx.reply("Couldn't find that address. Try a more specific address, or send a location pin.");
+          await ctx.reply(
+            "Couldn't find that address. Try a more specific address, or send a location pin.",
+          );
           return;
         }
         ({ lat, lng, label } = result);
@@ -714,7 +711,9 @@ export function registerHandlers(
 
       sessions.updateData(telegramId, { pickupLat: lat, pickupLng: lng, pickupLabel: label });
       sessions.setScene(telegramId, "request_dropoff");
-      await ctx.reply("Got it. Where do you need to be dropped off?\n\n📍 Drop a pin or type an address.");
+      await ctx.reply(
+        "Got it. Where do you need to be dropped off?\n\n📍 Drop a pin or type an address.",
+      );
       return;
     }
 
@@ -730,7 +729,9 @@ export function registerHandlers(
       } else if ("text" in ctx.message) {
         const result = await geocoding.geocode(ctx.message.text.trim());
         if (!result) {
-          await ctx.reply("Couldn't find that address. Try a more specific address, or send a location pin.");
+          await ctx.reply(
+            "Couldn't find that address. Try a more specific address, or send a location pin.",
+          );
           return;
         }
         ({ lat, lng, label } = result);
@@ -747,7 +748,7 @@ export function registerHandlers(
           [Markup.button.callback("Within 30 minutes", "req_time_30")],
           [Markup.button.callback("Within 1 hour", "req_time_60")],
           [Markup.button.callback("Within 2 hours", "req_time_120")],
-        ])
+        ]),
       );
       return;
     }
@@ -768,7 +769,7 @@ export function registerHandlers(
       sessions.setScene(telegramId, "registration_photo");
       await ctx.editMessageText(
         `Got it.\n\nNow, send me a photo of yourself. ` +
-        `This helps the other party recognize you.`
+          `This helps the other party recognize you.`,
       );
     });
   }
@@ -796,9 +797,7 @@ export function registerHandlers(
     repo.addVerification(session.userId, "car");
 
     await ctx.editMessageText(
-      `Car registered! ✅\n\n` +
-      formatCarInfo(car) + `\n\n` +
-      `Type /drive again to offer a ride.`
+      `Car registered! ✅\n\n` + formatCarInfo(car) + `\n\n` + `Type /drive again to offer a ride.`,
     );
     sessions.reset(telegramId);
   });
@@ -842,7 +841,7 @@ export function registerHandlers(
           [Markup.button.callback("Post this ride ✅", "post_ride")],
           [Markup.button.callback("Edit something ✏️", "edit_ride")],
           [Markup.button.callback("Cancel", "cancel_ride_flow")],
-        ])
+        ]),
       );
     });
   }
@@ -880,9 +879,9 @@ export function registerHandlers(
     if (candidates.length === 0) {
       await ctx.reply(
         "No riders along your route right now.\n" +
-        "I'll notify you if someone matches before you depart.\n\n" +
-        "💡 Share your invite link to get more people on TrempiadaBot:\n" +
-        `t.me/TrempiadaBot?start=ref_${session.userId}`
+          "I'll notify you if someone matches before you depart.\n\n" +
+          "💡 Share your invite link to get more people on TrempiadaBot:\n" +
+          `t.me/TrempiadaBot?start=ref_${session.userId}`,
       );
       sessions.reset(telegramId);
       return;
@@ -897,15 +896,21 @@ export function registerHandlers(
 
     await ctx.reply(
       `Found ${candidates.length} rider${candidates.length > 1 ? "s" : ""} along your route!\n\n` +
-      `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
-      formatTrustProfile(rider, riderVerifications, true) + `\n` +
-      `📍 Pickup: ${candidate.request.pickupLabel}\n` +
-      `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
-      `↩️ Detour: ~${formatDuration(candidate.detour.addedSeconds)}`,
+        `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
+        formatTrustProfile(rider, riderVerifications, true) +
+        `\n` +
+        `📍 Pickup: ${candidate.request.pickupLabel}\n` +
+        `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
+        `↩️ Detour: ~${formatDuration(candidate.detour.addedSeconds)}`,
       Markup.inlineKeyboard([
-        [Markup.button.callback(`Accept ${rider.firstName}`, `accept_rider_${candidate.request.id}`)],
+        [
+          Markup.button.callback(
+            `Accept ${rider.firstName}`,
+            `accept_rider_${candidate.request.id}`,
+          ),
+        ],
         [Markup.button.callback("Skip", `skip_rider_${candidate.request.id}`)],
-      ])
+      ]),
     );
 
     sessions.updateData(telegramId, {
@@ -950,7 +955,7 @@ export function registerHandlers(
       if (candidates.length === 0) {
         await ctx.reply(
           "No drivers on your route right now.\n\n" +
-          "Your request is saved — I'll notify you when a driver posts a matching ride. 🔔"
+            "Your request is saved — I'll notify you when a driver posts a matching ride. 🔔",
         );
         return;
       }
@@ -964,9 +969,9 @@ export function registerHandlers(
           await ctx.telegram.sendMessage(
             driver.telegramId,
             `🆕 New rider on your route!\n\n` +
-            `📍 Pickup: ${request.pickupLabel}\n` +
-            `📍 Dropoff: ${request.dropoffLabel}\n\n` +
-            `Type /drive to review and accept riders.`
+              `📍 Pickup: ${request.pickupLabel}\n` +
+              `📍 Dropoff: ${request.dropoffLabel}\n\n` +
+              `Type /drive to review and accept riders.`,
           );
           notified++;
         } catch {
@@ -976,9 +981,9 @@ export function registerHandlers(
 
       await ctx.reply(
         `Your request is posted! ✅\n\n` +
-        `Found ${candidates.length} driver${candidates.length > 1 ? "s" : ""} on your route. ` +
-        `${notified > 0 ? `I've notified them.` : ""}\n\n` +
-        `You'll get a message here when a driver accepts.`
+          `Found ${candidates.length} driver${candidates.length > 1 ? "s" : ""} on your route. ` +
+          `${notified > 0 ? `I've notified them.` : ""}\n\n` +
+          `You'll get a message here when a driver accepts.`,
       );
     });
   }
@@ -1030,11 +1035,11 @@ export function registerHandlers(
       await ctx.telegram.sendMessage(
         rider.telegramId,
         `🎉 A driver accepted your ride!\n\n` +
-        `📍 Pickup: ${candidate.request.pickupLabel}\n` +
-        `📍 Dropoff: ${candidate.request.dropoffLabel}\n\n` +
-        `Your confirmation code: *${code}*\n` +
-        `Show this to the driver when they arrive to confirm your identity.`,
-        { parse_mode: "Markdown" }
+          `📍 Pickup: ${candidate.request.pickupLabel}\n` +
+          `📍 Dropoff: ${candidate.request.dropoffLabel}\n\n` +
+          `Your confirmation code: *${code}*\n` +
+          `Show this to the driver when they arrive to confirm your identity.`,
+        { parse_mode: "Markdown" },
       );
     } catch (err) {
       console.error("Failed to notify rider:", err);
@@ -1042,8 +1047,8 @@ export function registerHandlers(
 
     await ctx.editMessageText(
       `✅ Matched with ${rider.firstName}!\n\n` +
-      `📍 Pick up: ${candidate.request.pickupLabel}\n\n` +
-      `Head to the pickup point. When you meet the rider, ask for their 4-digit code and enter it here.`
+        `📍 Pick up: ${candidate.request.pickupLabel}\n\n` +
+        `Head to the pickup point. When you meet the rider, ask for their 4-digit code and enter it here.`,
     );
   });
 
@@ -1060,7 +1065,7 @@ export function registerHandlers(
     if (idx >= candidates.length) {
       sessions.reset(telegramId);
       await ctx.editMessageText(
-        "No more riders to show. I'll notify you when someone new matches your route."
+        "No more riders to show. I'll notify you when someone new matches your route.",
       );
       return;
     }
@@ -1074,14 +1079,20 @@ export function registerHandlers(
 
     await ctx.editMessageText(
       `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
-      formatTrustProfile(rider, verifications, true) + `\n` +
-      `📍 Pickup: ${candidate.request.pickupLabel}\n` +
-      `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
-      `↩️ Detour: ~${formatDuration(candidate.detour.addedSeconds)}`,
+        formatTrustProfile(rider, verifications, true) +
+        `\n` +
+        `📍 Pickup: ${candidate.request.pickupLabel}\n` +
+        `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
+        `↩️ Detour: ~${formatDuration(candidate.detour.addedSeconds)}`,
       Markup.inlineKeyboard([
-        [Markup.button.callback(`Accept ${rider.firstName}`, `accept_rider_${candidate.request.id}`)],
+        [
+          Markup.button.callback(
+            `Accept ${rider.firstName}`,
+            `accept_rider_${candidate.request.id}`,
+          ),
+        ],
         [Markup.button.callback("Skip", `skip_rider_${candidate.request.id}`)],
-      ])
+      ]),
     );
   });
 
@@ -1104,14 +1115,14 @@ export function registerHandlers(
     const driver = repo.getUserById(match.driverId);
 
     const ratingKeyboard = Markup.inlineKeyboard([
-      [1, 2, 3, 4, 5].map(s => Markup.button.callback(`${s}⭐`, `rate_${s}`)),
+      [1, 2, 3, 4, 5].map((s) => Markup.button.callback(`${s}⭐`, `rate_${s}`)),
     ]);
 
     sessions.setScene(telegramId, "rating");
     sessions.updateData(telegramId, { matchId });
     await ctx.editMessageText(
       `Ride complete! 🎉\n\nHow was ${rider?.firstName}? Rate your rider:`,
-      ratingKeyboard
+      ratingKeyboard,
     );
 
     if (rider) {
@@ -1121,7 +1132,7 @@ export function registerHandlers(
         await ctx.telegram.sendMessage(
           rider.telegramId,
           `You've arrived! 🎉\n\nHow was your ride with ${driver?.firstName}?`,
-          ratingKeyboard
+          ratingKeyboard,
         );
       } catch (err) {
         console.error("Failed to send rider rating prompt:", err);
@@ -1141,9 +1152,7 @@ export function registerHandlers(
       const match = repo.getMatchById(session.data.matchId);
       if (!match) return;
 
-      const ratedId = match.driverId === session.userId
-        ? match.riderId
-        : match.driverId;
+      const ratedId = match.driverId === session.userId ? match.riderId : match.driverId;
 
       repo.addRating(match.id, session.userId, ratedId, score, null);
 
@@ -1151,22 +1160,20 @@ export function registerHandlers(
       if (repo.bothRated(match.id)) {
         // Award points
         const ratings = repo.getRatingsForMatch(match.id);
-        const driverRating = ratings.find(r => r.ratedId === match.driverId);
-        const riderRating = ratings.find(r => r.ratedId === match.riderId);
+        const driverRating = ratings.find((r) => r.ratedId === match.driverId);
+        const riderRating = ratings.find((r) => r.ratedId === match.riderId);
 
         // Points for driver
         if (driverRating) {
-          const driverPoints = driverRating.score >= 4
-            ? POINTS.DRIVER_REWARD_HIGH
-            : POINTS.DRIVER_REWARD_LOW;
+          const driverPoints =
+            driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
           repo.adjustPoints(match.driverId, driverPoints);
         }
 
         // Points for rider
         if (riderRating) {
-          const riderPoints = riderRating.score >= 4
-            ? POINTS.RIDER_REWARD_HIGH
-            : POINTS.RIDER_REWARD_LOW;
+          const riderPoints =
+            riderRating.score >= 4 ? POINTS.RIDER_REWARD_HIGH : POINTS.RIDER_REWARD_LOW;
           repo.adjustPoints(match.riderId, riderPoints);
         }
 
@@ -1179,12 +1186,13 @@ export function registerHandlers(
         const rider = repo.getUserById(match.riderId);
 
         if (driver && driverRating) {
-          const pts = driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
+          const pts =
+            driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
           try {
             await ctx.telegram.sendMessage(
               driver.telegramId,
               `Thanks! ${rider?.firstName} rated you ⭐${driverRating.score}.\n` +
-              `You earned ${pts} points. Balance: ${repo.getPointsBalance(driver.id).toFixed(1)} pts.`
+                `You earned ${pts} points. Balance: ${repo.getPointsBalance(driver.id).toFixed(1)} pts.`,
             );
           } catch {
             // Notification failures should not block rating completion.
@@ -1197,7 +1205,7 @@ export function registerHandlers(
             await ctx.telegram.sendMessage(
               rider.telegramId,
               `Thanks! ${driver?.firstName} rated you ⭐${riderRating.score}.\n` +
-              `You earned ${pts} points. Balance: ${repo.getPointsBalance(rider.id).toFixed(1)} pts.`
+                `You earned ${pts} points. Balance: ${repo.getPointsBalance(rider.id).toFixed(1)} pts.`,
             );
           } catch {
             // Notification failures should not block rating completion.
@@ -1206,7 +1214,7 @@ export function registerHandlers(
       } else {
         await ctx.editMessageText(
           `Thanks for rating ⭐${score}! ` +
-          `Waiting for the other party to rate — you'll both see results once they do.`
+            `Waiting for the other party to rate — you'll both see results once they do.`,
         );
       }
 

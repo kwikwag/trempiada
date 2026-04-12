@@ -6,6 +6,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "hooks:install": "git config core.hooksPath .githooks",
     "lint": "eslint .",
     "migrate": "ts-node src/db/migrate.ts",
@@ -28,6 +30,7 @@
     "@types/node": "^22.19.17",
     "eslint": "^10.2.0",
     "globals": "^17.4.0",
+    "prettier": "^3.8.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.1"

@@ -1,8 +1,19 @@
 import Database from "better-sqlite3";
 import type {
-  User, Car, Ride, RideRequest, Match, Rating,
-  TrustVerification, Dispute, Gender, VerificationType,
-  CancellationReason, MatchStatus, RideStatus, RequestStatus,
+  User,
+  Car,
+  Ride,
+  RideRequest,
+  Match,
+  Rating,
+  TrustVerification,
+  Dispute,
+  Gender,
+  VerificationType,
+  CancellationReason,
+  MatchStatus,
+  RideStatus,
+  RequestStatus,
 } from "../types";
 
 // ---- Private DB row interfaces (snake_case column names) ----
@@ -123,9 +134,15 @@ interface DisputeRow {
   created_at: string;
 }
 
-interface CountRow { cnt: number; }
-interface AvgScoreRow { avg_score: number | null; }
-interface PointsBalanceRow { points_balance: number; }
+interface CountRow {
+  cnt: number;
+}
+interface AvgScoreRow {
+  avg_score: number | null;
+}
+interface PointsBalanceRow {
+  points_balance: number;
+}
 
 /**
  * Data access layer — thin wrapper over SQLite queries.
@@ -168,15 +185,27 @@ export class Repository {
       gender?: Gender;
       photoFileId?: string;
       phone?: string;
-    }
+    },
   ): void {
     const fields: string[] = [];
     const values: (string | number)[] = [];
 
-    if (updates.firstName !== undefined) { fields.push("first_name = ?"); values.push(updates.firstName); }
-    if (updates.gender !== undefined) { fields.push("gender = ?"); values.push(updates.gender); }
-    if (updates.photoFileId !== undefined) { fields.push("photo_file_id = ?"); values.push(updates.photoFileId); }
-    if (updates.phone !== undefined) { fields.push("phone = ?"); values.push(updates.phone); }
+    if (updates.firstName !== undefined) {
+      fields.push("first_name = ?");
+      values.push(updates.firstName);
+    }
+    if (updates.gender !== undefined) {
+      fields.push("gender = ?");
+      values.push(updates.gender);
+    }
+    if (updates.photoFileId !== undefined) {
+      fields.push("photo_file_id = ?");
+      values.push(updates.photoFileId);
+    }
+    if (updates.phone !== undefined) {
+      fields.push("phone = ?");
+      values.push(updates.phone);
+    }
 
     if (fields.length === 0) return;
     values.push(userId);
@@ -185,12 +214,15 @@ export class Repository {
   }
 
   adjustPoints(userId: number, delta: number): void {
-    this.db.prepare("UPDATE users SET points_balance = points_balance + ? WHERE id = ?")
+    this.db
+      .prepare("UPDATE users SET points_balance = points_balance + ? WHERE id = ?")
       .run(delta, userId);
   }
 
   getPointsBalance(userId: number): number {
-    const row = this.db.prepare<[number], PointsBalanceRow>("SELECT points_balance FROM users WHERE id = ?").get(userId);
+    const row = this.db
+      .prepare<[number], PointsBalanceRow>("SELECT points_balance FROM users WHERE id = ?")
+      .get(userId);
     return row?.points_balance ?? 0;
   }
 
@@ -202,16 +234,19 @@ export class Repository {
   updateAvgRating(userId: number, role: "driver" | "rider"): void {
     const col = role === "driver" ? "avg_rating_as_driver" : "avg_rating_as_rider";
     // Compute from all ratings where this user was rated in matching role
-    const avg = this.db.prepare<[number, number], AvgScoreRow>(`
+    const avg = this.db
+      .prepare<[number, number], AvgScoreRow>(
+        `
       SELECT AVG(r.score) as avg_score
       FROM ratings r
       JOIN matches m ON r.match_id = m.id
       WHERE r.rated_id = ?
         AND ${role === "driver" ? "m.driver_id" : "m.rider_id"} = ?
-    `).get(userId, userId);
+    `,
+      )
+      .get(userId, userId);
 
-    this.db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`)
-      .run(avg?.avg_score ?? null, userId);
+    this.db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(avg?.avg_score ?? null, userId);
   }
 
   suspendUser(userId: number): void {
@@ -227,7 +262,9 @@ export class Repository {
    */
   anonymizeUser(userId: number): void {
     this.db.transaction(() => {
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         UPDATE users SET
           first_name    = 'Deleted User',
           gender        = NULL,
@@ -236,18 +273,22 @@ export class Repository {
           trust_score   = 0,
           is_suspended  = 1
         WHERE id = ?
-      `).run(userId);
+      `,
+        )
+        .run(userId);
 
-      this.db.prepare(
-        "DELETE FROM trust_verifications WHERE user_id = ?"
-      ).run(userId);
+      this.db.prepare("DELETE FROM trust_verifications WHERE user_id = ?").run(userId);
 
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         UPDATE cars SET
           plate_number  = 'DELETED',
           photo_file_id = NULL
         WHERE user_id = ?
-      `).run(userId);
+      `,
+        )
+        .run(userId);
     })();
   }
 
@@ -257,45 +298,59 @@ export class Repository {
     userId: number,
     type: VerificationType,
     externalRef: string | null = null,
-    sharedWithRiders: boolean = true
+    sharedWithRiders: boolean = true,
   ): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO trust_verifications (user_id, type, external_ref, shared_with_riders)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(user_id, type) DO UPDATE SET
         external_ref = excluded.external_ref,
         shared_with_riders = excluded.shared_with_riders,
         verified_at = datetime('now')
-    `).run(userId, type, externalRef, sharedWithRiders ? 1 : 0);
+    `,
+      )
+      .run(userId, type, externalRef, sharedWithRiders ? 1 : 0);
 
     this.recalcTrustScore(userId);
   }
 
   setVerificationVisibility(userId: number, type: VerificationType, shared: boolean): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE trust_verifications SET shared_with_riders = ? WHERE user_id = ? AND type = ?
-    `).run(shared ? 1 : 0, userId, type);
+    `,
+      )
+      .run(shared ? 1 : 0, userId, type);
   }
 
   getVerifications(userId: number): TrustVerification[] {
-    const rows = this.db.prepare<[number], VerificationRow>(
-      "SELECT * FROM trust_verifications WHERE user_id = ?"
-    ).all(userId);
+    const rows = this.db
+      .prepare<[number], VerificationRow>("SELECT * FROM trust_verifications WHERE user_id = ?")
+      .all(userId);
     return rows.map(this.mapVerification);
   }
 
   /** Get only verifications the user chose to share (shown to riders) */
   getPublicVerifications(userId: number): TrustVerification[] {
-    const rows = this.db.prepare<[number], VerificationRow>(
-      "SELECT * FROM trust_verifications WHERE user_id = ? AND shared_with_riders = 1"
-    ).all(userId);
+    const rows = this.db
+      .prepare<
+        [number],
+        VerificationRow
+      >("SELECT * FROM trust_verifications WHERE user_id = ? AND shared_with_riders = 1")
+      .all(userId);
     return rows.map(this.mapVerification);
   }
 
   getVerificationCount(userId: number): number {
-    const row = this.db.prepare<[number], CountRow>(
-      "SELECT COUNT(*) as cnt FROM trust_verifications WHERE user_id = ?"
-    ).get(userId);
+    const row = this.db
+      .prepare<
+        [number],
+        CountRow
+      >("SELECT COUNT(*) as cnt FROM trust_verifications WHERE user_id = ?")
+      .get(userId);
     return row?.cnt ?? 0;
   }
 
@@ -304,8 +359,13 @@ export class Repository {
     // plus average rating contributes
     const verifications = this.getVerifications(userId);
     const weights: Record<VerificationType, number> = {
-      phone: 1, photo: 1, car: 1,
-      facebook: 2, linkedin: 2, google: 1.5, email: 1,
+      phone: 1,
+      photo: 1,
+      car: 1,
+      facebook: 2,
+      linkedin: 2,
+      google: 1.5,
+      email: 1,
     };
 
     let score = verifications.reduce((sum, v) => sum + (weights[v.type] || 0), 0);
@@ -328,7 +388,7 @@ export class Repository {
     color: string,
     year: number | null,
     seatCount: number,
-    photoFileId: string | null
+    photoFileId: string | null,
   ): Car {
     // Deactivate other cars for this user
     this.db.prepare("UPDATE cars SET is_active = 0 WHERE user_id = ?").run(userId);
@@ -342,14 +402,14 @@ export class Repository {
       RETURNING *
     `);
     return this.mapCar(
-      stmt.get(userId, plateNumber, make, model, color, year, seatCount, photoFileId)!
+      stmt.get(userId, plateNumber, make, model, color, year, seatCount, photoFileId)!,
     );
   }
 
   getActiveCar(userId: number): Car | null {
-    const row = this.db.prepare<[number], CarRow>(
-      "SELECT * FROM cars WHERE user_id = ? AND is_active = 1"
-    ).get(userId);
+    const row = this.db
+      .prepare<[number], CarRow>("SELECT * FROM cars WHERE user_id = ? AND is_active = 1")
+      .get(userId);
     return row ? this.mapCar(row) : null;
   }
 
@@ -357,7 +417,21 @@ export class Repository {
 
   createRide(ride: Omit<Ride, "id" | "status" | "createdAt">): Ride {
     const stmt = this.db.prepare<
-      [number, number, number, number, number, number, string, string, string | null, number | null, string, number, number],
+      [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        string,
+        string,
+        string | null,
+        number | null,
+        string,
+        number,
+        number,
+      ],
       RideRow
     >(`
       INSERT INTO rides (
@@ -367,13 +441,23 @@ export class Repository {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
-    return this.mapRide(stmt.get(
-      ride.driverId, ride.carId,
-      ride.originLat, ride.originLng, ride.destLat, ride.destLng,
-      ride.originLabel, ride.destLabel,
-      ride.routeGeometry, ride.estimatedDuration,
-      ride.departureTime, ride.maxDetourMinutes, ride.availableSeats,
-    )!);
+    return this.mapRide(
+      stmt.get(
+        ride.driverId,
+        ride.carId,
+        ride.originLat,
+        ride.originLng,
+        ride.destLat,
+        ride.destLng,
+        ride.originLabel,
+        ride.destLabel,
+        ride.routeGeometry,
+        ride.estimatedDuration,
+        ride.departureTime,
+        ride.maxDetourMinutes,
+        ride.availableSeats,
+      )!,
+    );
   }
 
   updateRideStatus(rideId: number, status: RideStatus): void {
@@ -381,9 +465,9 @@ export class Repository {
   }
 
   getOpenRides(): Ride[] {
-    const rows = this.db.prepare<[], RideRow>(
-      "SELECT * FROM rides WHERE status = 'open' ORDER BY departure_time ASC"
-    ).all();
+    const rows = this.db
+      .prepare<[], RideRow>("SELECT * FROM rides WHERE status = 'open' ORDER BY departure_time ASC")
+      .all();
     return rows.map(this.mapRide);
   }
 
@@ -405,18 +489,28 @@ export class Repository {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
-    return this.mapRequest(stmt.get(
-      req.riderId,
-      req.pickupLat, req.pickupLng, req.dropoffLat, req.dropoffLng,
-      req.pickupLabel, req.dropoffLabel,
-      req.earliestDeparture, req.latestDeparture,
-    )!);
+    return this.mapRequest(
+      stmt.get(
+        req.riderId,
+        req.pickupLat,
+        req.pickupLng,
+        req.dropoffLat,
+        req.dropoffLng,
+        req.pickupLabel,
+        req.dropoffLabel,
+        req.earliestDeparture,
+        req.latestDeparture,
+      )!,
+    );
   }
 
   getOpenRequests(): RideRequest[] {
-    const rows = this.db.prepare<[], RideRequestRow>(
-      "SELECT * FROM ride_requests WHERE status = 'open' ORDER BY earliest_departure ASC"
-    ).all();
+    const rows = this.db
+      .prepare<
+        [],
+        RideRequestRow
+      >("SELECT * FROM ride_requests WHERE status = 'open' ORDER BY earliest_departure ASC")
+      .all();
     return rows.map(this.mapRequest);
   }
 
@@ -426,7 +520,18 @@ export class Repository {
 
   // ---- Matches ----
 
-  createMatch(match: Omit<Match, "id" | "status" | "cancellationReason" | "cancelledBy" | "pickedUpAt" | "completedAt" | "createdAt">): Match {
+  createMatch(
+    match: Omit<
+      Match,
+      | "id"
+      | "status"
+      | "cancellationReason"
+      | "cancelledBy"
+      | "pickedUpAt"
+      | "completedAt"
+      | "createdAt"
+    >,
+  ): Match {
     const stmt = this.db.prepare<
       [number, number, number, number, number, number, number, number, number, string, number],
       MatchRow
@@ -438,67 +543,102 @@ export class Repository {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
-    return this.mapMatch(stmt.get(
-      match.rideId, match.requestId, match.riderId, match.driverId,
-      match.pickupLat, match.pickupLng, match.dropoffLat, match.dropoffLng,
-      match.detourSeconds, match.confirmationCode, match.pointsCost,
-    )!);
+    return this.mapMatch(
+      stmt.get(
+        match.rideId,
+        match.requestId,
+        match.riderId,
+        match.driverId,
+        match.pickupLat,
+        match.pickupLng,
+        match.dropoffLat,
+        match.dropoffLng,
+        match.detourSeconds,
+        match.confirmationCode,
+        match.pointsCost,
+      )!,
+    );
   }
 
   updateMatchStatus(matchId: number, status: MatchStatus): void {
-    const extra = status === "picked_up"
-      ? ", picked_up_at = datetime('now')"
-      : status === "completed"
-        ? ", completed_at = datetime('now')"
-        : "";
+    const extra =
+      status === "picked_up"
+        ? ", picked_up_at = datetime('now')"
+        : status === "completed"
+          ? ", completed_at = datetime('now')"
+          : "";
     this.db.prepare(`UPDATE matches SET status = ?${extra} WHERE id = ?`).run(status, matchId);
   }
 
   cancelMatch(matchId: number, cancelledBy: number, reason: CancellationReason): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE matches SET status = 'cancelled', cancelled_by = ?, cancellation_reason = ? WHERE id = ?
-    `).run(cancelledBy, reason, matchId);
+    `,
+      )
+      .run(cancelledBy, reason, matchId);
   }
 
   getActiveMatchForUser(userId: number): Match | null {
-    const row = this.db.prepare<[number, number], MatchRow>(`
+    const row = this.db
+      .prepare<[number, number], MatchRow>(
+        `
       SELECT * FROM matches
       WHERE (rider_id = ? OR driver_id = ?)
         AND status IN ('pending', 'accepted', 'picked_up')
       ORDER BY created_at DESC LIMIT 1
-    `).get(userId, userId);
+    `,
+      )
+      .get(userId, userId);
     return row ? this.mapMatch(row) : null;
   }
 
   getMatchById(matchId: number): Match | null {
-    const row = this.db.prepare<[number], MatchRow>("SELECT * FROM matches WHERE id = ?").get(matchId);
+    const row = this.db
+      .prepare<[number], MatchRow>("SELECT * FROM matches WHERE id = ?")
+      .get(matchId);
     return row ? this.mapMatch(row) : null;
   }
 
   /** Anti-gaming: check if same pair rode together recently */
   getRecentSamePairCount(userId1: number, userId2: number, hoursBack: number): number {
-    const row = this.db.prepare<[number, number, number, number, number], CountRow>(`
+    const row = this.db
+      .prepare<[number, number, number, number, number], CountRow>(
+        `
       SELECT COUNT(*) as cnt FROM matches
       WHERE status = 'completed'
         AND ((driver_id = ? AND rider_id = ?) OR (driver_id = ? AND rider_id = ?))
         AND completed_at > datetime('now', '-' || ? || ' hours')
-    `).get(userId1, userId2, userId2, userId1, hoursBack);
+    `,
+      )
+      .get(userId1, userId2, userId2, userId1, hoursBack);
     return row?.cnt ?? 0;
   }
 
   /** Count recent cancellations for anti-abuse */
   getRecentCancellationCount(userId: number, daysBack: number): number {
-    const row = this.db.prepare<[number, number], CountRow>(`
+    const row = this.db
+      .prepare<[number, number], CountRow>(
+        `
       SELECT COUNT(*) as cnt FROM matches
       WHERE cancelled_by = ?
         AND created_at > datetime('now', '-' || ? || ' days')
-    `).get(userId, daysBack);
+    `,
+      )
+      .get(userId, daysBack);
     return row?.cnt ?? 0;
   }
 
   // ---- Ratings ----
 
-  addRating(matchId: number, raterId: number, ratedId: number, score: number, comment: string | null): Rating {
+  addRating(
+    matchId: number,
+    raterId: number,
+    ratedId: number,
+    score: number,
+    comment: string | null,
+  ): Rating {
     const stmt = this.db.prepare<[number, number, number, number, string | null], RatingRow>(`
       INSERT INTO ratings (match_id, rater_id, rated_id, score, comment)
       VALUES (?, ?, ?, ?, ?)
@@ -518,16 +658,16 @@ export class Repository {
   }
 
   getRatingsForMatch(matchId: number): Rating[] {
-    const rows = this.db.prepare<[number], RatingRow>(
-      "SELECT * FROM ratings WHERE match_id = ?"
-    ).all(matchId);
+    const rows = this.db
+      .prepare<[number], RatingRow>("SELECT * FROM ratings WHERE match_id = ?")
+      .all(matchId);
     return rows.map(this.mapRating);
   }
 
   bothRated(matchId: number): boolean {
-    const row = this.db.prepare<[number], CountRow>(
-      "SELECT COUNT(*) as cnt FROM ratings WHERE match_id = ?"
-    ).get(matchId);
+    const row = this.db
+      .prepare<[number], CountRow>("SELECT COUNT(*) as cnt FROM ratings WHERE match_id = ?")
+      .get(matchId);
     return (row?.cnt ?? 0) >= 2;
   }
 

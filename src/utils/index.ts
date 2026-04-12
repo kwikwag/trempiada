@@ -31,7 +31,7 @@ export function formatDuration(seconds: number): string {
 export function formatTrustProfile(
   user: User,
   verifications: TrustVerification[],
-  forPublic: boolean = false
+  forPublic: boolean = false,
 ): string {
   const lines: string[] = [];
 
@@ -51,7 +51,9 @@ export function formatTrustProfile(
   }
 
   if (user.avgRatingAsDriver !== null && user.totalRidesAsDriver > 0) {
-    lines.push(`⭐ ${user.avgRatingAsDriver.toFixed(1)} (${user.totalRidesAsDriver} rides as driver)`);
+    lines.push(
+      `⭐ ${user.avgRatingAsDriver.toFixed(1)} (${user.totalRidesAsDriver} rides as driver)`,
+    );
   }
   if (user.avgRatingAsRider !== null && user.totalRidesAsRider > 0) {
     lines.push(`⭐ ${user.avgRatingAsRider.toFixed(1)} (${user.totalRidesAsRider} rides as rider)`);
@@ -77,7 +79,7 @@ export function formatRideSummary(
   durationSeconds: number | null,
   departureTime: string,
   seats: number,
-  maxDetour: number
+  maxDetour: number,
 ): string {
   const duration = durationSeconds ? formatDuration(durationSeconds) : "calculating...";
   const depTime = formatDepartureTime(departureTime);
@@ -133,17 +135,13 @@ export function formatMatchForRider(
 }
 
 /** Haversine distance between two points in km */
-export function haversineKm(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number
-): number {
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }

@@ -65,6 +65,7 @@ osrm-routed --algorithm=MLD israel-and-palestine-latest.osrm --port 5000
 ```
 
 Or use Docker:
+
 ```bash
 docker run -t -v $(pwd):/data ghcr.io/project-osrm/osrm-backend \
   osrm-extract -p /opt/car.lua /data/israel-and-palestine-latest.osm.pbf
@@ -111,15 +112,15 @@ For emergency commits only, bypass it with `SKIP_PRECOMMIT=1 git commit ...`.
 
 ## Bot Commands
 
-| Command   | Description                              |
-|-----------|------------------------------------------|
-| `/start`  | Register or welcome back                 |
-| `/drive`  | Offer a ride (triggers car reg if needed)|
-| `/ride`   | Request a ride                           |
-| `/cancel` | Cancel active ride + reason              |
-| `/trust`  | View/manage identity verifications       |
-| `/status` | Check points balance and active ride     |
-| `/sos`    | Emergency — logs event, shows helplines  |
+| Command   | Description                               |
+| --------- | ----------------------------------------- |
+| `/start`  | Register or welcome back                  |
+| `/drive`  | Offer a ride (triggers car reg if needed) |
+| `/ride`   | Request a ride                            |
+| `/cancel` | Cancel active ride + reason               |
+| `/trust`  | View/manage identity verifications        |
+| `/status` | Check points balance and active ride      |
+| `/sos`    | Emergency — logs event, shows helplines   |
 
 ## Points Economy
 

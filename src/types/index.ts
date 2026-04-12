@@ -57,12 +57,7 @@ export interface Car {
 
 // ---- Rides & Matching ----
 
-export type RideStatus =
-  | "open"
-  | "matched"
-  | "in_progress"
-  | "completed"
-  | "cancelled";
+export type RideStatus = "open" | "matched" | "in_progress" | "completed" | "cancelled";
 
 export interface Ride {
   id: number;
@@ -85,11 +80,7 @@ export interface Ride {
   createdAt: string;
 }
 
-export type RequestStatus =
-  | "open"
-  | "matched"
-  | "completed"
-  | "cancelled";
+export type RequestStatus = "open" | "matched" | "completed" | "cancelled";
 
 export interface RideRequest {
   id: number;
@@ -107,17 +98,13 @@ export interface RideRequest {
 }
 
 export type MatchStatus =
-  | "pending"    // Driver accepted, waiting for rider
-  | "accepted"   // Both accepted
-  | "picked_up"  // Confirmation code entered
+  | "pending" // Driver accepted, waiting for rider
+  | "accepted" // Both accepted
+  | "picked_up" // Confirmation code entered
   | "completed"
   | "cancelled";
 
-export type CancellationReason =
-  | "changed_plans"
-  | "no_show"
-  | "felt_unsafe"
-  | "other";
+export type CancellationReason = "changed_plans" | "no_show" | "felt_unsafe" | "other";
 
 export interface Match {
   id: number;
@@ -183,8 +170,8 @@ export type BotScene =
   | "request_dropoff"
   | "request_time"
   | "request_review"
-  | "match_pending"      // Waiting for other party
-  | "in_ride_relay"      // Message relay mode
+  | "match_pending" // Waiting for other party
+  | "in_ride_relay" // Message relay mode
   | "rating"
   | "cancel_reason"
   | "dispute_description";
@@ -229,12 +216,12 @@ export interface CarDetails {
 
 export const POINTS = {
   STARTER_BALANCE: 5,
-  DRIVER_REWARD_HIGH: 2,    // Rating 4-5
-  DRIVER_REWARD_LOW: 1,     // Rating 1-3
+  DRIVER_REWARD_HIGH: 2, // Rating 4-5
+  DRIVER_REWARD_LOW: 1, // Rating 1-3
   DRIVER_REWARD_CANCELLED: 0,
-  RIDER_REWARD_HIGH: 0.5,   // Rating 4-5
-  RIDER_REWARD_LOW: 0.2,    // Rating 1-3
-  NO_SHOW_COMPENSATION: 1,  // For the waiting party
+  RIDER_REWARD_HIGH: 0.5, // Rating 4-5
+  RIDER_REWARD_LOW: 0.2, // Rating 1-3
+  NO_SHOW_COMPENSATION: 1, // For the waiting party
   MIN_RIDE_DISTANCE_KM: 5,
   SAME_PAIR_COOLDOWN_HOURS: 24,
 } as const;
@@ -248,7 +235,7 @@ export const DEFAULTS = {
   CONFIRMATION_MAX_ATTEMPTS: 3,
   MATCH_ACCEPT_TIMEOUT_MINUTES: 5,
   NO_SHOW_BUFFER_MINUTES: 5,
-  CANCELLATION_THRESHOLD: 3,    // Cancels per week before penalty
-  NO_SHOW_THRESHOLD: 3,         // Before suspension
-  MIN_TRUST_VERIFICATIONS: 1,   // Drivers must have at least 1
+  CANCELLATION_THRESHOLD: 3, // Cancels per week before penalty
+  NO_SHOW_THRESHOLD: 3, // Before suspension
+  MIN_TRUST_VERIFICATIONS: 1, // Drivers must have at least 1
 } as const;

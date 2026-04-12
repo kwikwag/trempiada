@@ -4,7 +4,7 @@ import { RoutingService } from "../../src/services/routing";
 import { withFetch } from "../helpers/fetch-mock";
 
 const ORIGIN = { lat: 32.08, lng: 34.78 };
-const DEST   = { lat: 31.77, lng: 35.21 };
+const DEST = { lat: 31.77, lng: 35.21 };
 
 // ---------------------------------------------------------------------------
 // Response builders
@@ -26,7 +26,7 @@ test("getRoute returns RouteResult on valid OSRM response", async () => {
   const service = new RoutingService("http://osrm.test");
 
   const result = await withFetch({ "osrm.test": () => osrmRouteOk(80_000, 3600, "poly") }, () =>
-    service.getRoute(ORIGIN, DEST)
+    service.getRoute(ORIGIN, DEST),
   );
 
   assert.ok(result);
@@ -39,7 +39,7 @@ test("getRoute returns null when OSRM code is not Ok", async () => {
   const service = new RoutingService("http://osrm.test");
 
   const result = await withFetch({ "osrm.test": () => ({ code: "NoRoute", routes: [] }) }, () =>
-    service.getRoute(ORIGIN, DEST)
+    service.getRoute(ORIGIN, DEST),
   );
 
   assert.equal(result, null);
@@ -49,7 +49,7 @@ test("getRoute returns null when routes array is empty", async () => {
   const service = new RoutingService("http://osrm.test");
 
   const result = await withFetch({ "osrm.test": () => ({ code: "Ok", routes: [] }) }, () =>
-    service.getRoute(ORIGIN, DEST)
+    service.getRoute(ORIGIN, DEST),
   );
 
   assert.equal(result, null);
@@ -61,7 +61,7 @@ test("getRoute returns null when response fails schema validation", async () => 
   const invalid = { code: 200, routes: [] };
 
   const result = await withFetch({ "osrm.test": () => invalid }, () =>
-    service.getRoute(ORIGIN, DEST)
+    service.getRoute(ORIGIN, DEST),
   );
 
   assert.equal(result, null);
@@ -73,7 +73,7 @@ test("getRoute returns null when a route entry is missing required fields", asyn
   const invalid = { code: "Ok", routes: [{ distance: 1000 }] };
 
   const result = await withFetch({ "osrm.test": () => invalid }, () =>
-    service.getRoute(ORIGIN, DEST)
+    service.getRoute(ORIGIN, DEST),
   );
 
   assert.equal(result, null);
@@ -83,22 +83,25 @@ test("getRoute returns null when a route entry is missing required fields", asyn
 // calculateDetour
 // ---------------------------------------------------------------------------
 
-const PICKUP  = { lat: 32.06, lng: 34.76 };
-const DROPOFF = { lat: 31.90, lng: 35.00 };
+const PICKUP = { lat: 32.06, lng: 34.76 };
+const DROPOFF = { lat: 31.9, lng: 35.0 };
 
 test("calculateDetour returns DetourResult on valid OSRM responses", async () => {
   const service = new RoutingService("http://osrm.test");
   let callCount = 0;
 
-  const result = await withFetch({
-    "osrm.test": () => {
-      // First call: direct route. Second call: detour route.
-      callCount++;
-      return callCount === 1
-        ? osrmRouteOk(80_000, 3600, "poly")
-        : { code: "Ok", routes: [{ distance: 95_000, duration: 4200 }] };
+  const result = await withFetch(
+    {
+      "osrm.test": () => {
+        // First call: direct route. Second call: detour route.
+        callCount++;
+        return callCount === 1
+          ? osrmRouteOk(80_000, 3600, "poly")
+          : { code: "Ok", routes: [{ distance: 95_000, duration: 4200 }] };
+      },
     },
-  }, () => service.calculateDetour(ORIGIN, DEST, PICKUP, DROPOFF));
+    () => service.calculateDetour(ORIGIN, DEST, PICKUP, DROPOFF),
+  );
 
   assert.ok(result);
   assert.equal(result.originalDuration, 3600);
@@ -110,15 +113,16 @@ test("calculateDetour returns null when detour response fails schema validation"
   const service = new RoutingService("http://osrm.test");
   let callCount = 0;
 
-  const result = await withFetch({
-    "osrm.test": () => {
-      callCount++;
-      // First call (direct) succeeds; second call (detour) has invalid schema
-      return callCount === 1
-        ? osrmRouteOk(80_000, 3600, "poly")
-        : { code: 999, routes: [] };
+  const result = await withFetch(
+    {
+      "osrm.test": () => {
+        callCount++;
+        // First call (direct) succeeds; second call (detour) has invalid schema
+        return callCount === 1 ? osrmRouteOk(80_000, 3600, "poly") : { code: 999, routes: [] };
+      },
     },
-  }, () => service.calculateDetour(ORIGIN, DEST, PICKUP, DROPOFF));
+    () => service.calculateDetour(ORIGIN, DEST, PICKUP, DROPOFF),
+  );
 
   assert.equal(result, null);
 });
@@ -131,7 +135,7 @@ test("findNearest returns GeoPoint on valid OSRM response", async () => {
   const service = new RoutingService("http://osrm.test");
 
   const result = await withFetch({ "osrm.test": () => osrmNearestOk(34.79, 32.09) }, () =>
-    service.findNearest(ORIGIN)
+    service.findNearest(ORIGIN),
   );
 
   assert.ok(result);
@@ -142,8 +146,9 @@ test("findNearest returns GeoPoint on valid OSRM response", async () => {
 test("findNearest returns null when OSRM code is not Ok", async () => {
   const service = new RoutingService("http://osrm.test");
 
-  const result = await withFetch({ "osrm.test": () => ({ code: "NoSegment", waypoints: [] }) }, () =>
-    service.findNearest(ORIGIN)
+  const result = await withFetch(
+    { "osrm.test": () => ({ code: "NoSegment", waypoints: [] }) },
+    () => service.findNearest(ORIGIN),
   );
 
   assert.equal(result, null);
@@ -154,9 +159,7 @@ test("findNearest returns null when response fails schema validation", async () 
   // `location` must be a [number, number] tuple
   const invalid = { code: "Ok", waypoints: [{ location: "34.78,32.08" }] };
 
-  const result = await withFetch({ "osrm.test": () => invalid }, () =>
-    service.findNearest(ORIGIN)
-  );
+  const result = await withFetch({ "osrm.test": () => invalid }, () => service.findNearest(ORIGIN));
 
   assert.equal(result, null);
 });

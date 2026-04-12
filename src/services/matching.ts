@@ -56,17 +56,13 @@ export class MatchingService {
       // Rough distance check: pickup should be vaguely near the route
       // Use a generous radius since the actual detour calc is what matters
       const pickupToOrigin = haversineKm(
-        req.pickupLat, req.pickupLng,
-        ride.originLat, ride.originLng
+        req.pickupLat,
+        req.pickupLng,
+        ride.originLat,
+        ride.originLng,
       );
-      const pickupToDest = haversineKm(
-        req.pickupLat, req.pickupLng,
-        ride.destLat, ride.destLng
-      );
-      const routeLength = haversineKm(
-        ride.originLat, ride.originLng,
-        ride.destLat, ride.destLng
-      );
+      const pickupToDest = haversineKm(req.pickupLat, req.pickupLng, ride.destLat, ride.destLng);
+      const routeLength = haversineKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
 
       // If pickup is farther from both endpoints than the route length,
       // it's almost certainly not along the way
@@ -74,15 +70,18 @@ export class MatchingService {
 
       // Minimum ride distance (anti-gaming)
       const rideDistance = haversineKm(
-        req.pickupLat, req.pickupLng,
-        req.dropoffLat, req.dropoffLng
+        req.pickupLat,
+        req.pickupLng,
+        req.dropoffLat,
+        req.dropoffLng,
       );
       if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) continue;
 
       // Same-pair cooldown (anti-gaming)
       const recentCount = this.repo.getRecentSamePairCount(
-        ride.driverId, req.riderId,
-        POINTS.SAME_PAIR_COOLDOWN_HOURS
+        ride.driverId,
+        req.riderId,
+        POINTS.SAME_PAIR_COOLDOWN_HOURS,
       );
       if (recentCount > 0) continue;
 
@@ -90,9 +89,7 @@ export class MatchingService {
       const pickup: GeoPoint = { lat: req.pickupLat, lng: req.pickupLng };
       const dropoff: GeoPoint = { lat: req.dropoffLat, lng: req.dropoffLng };
 
-      const detour = await this.routing.calculateDetour(
-        driverOrigin, driverDest, pickup, dropoff
-      );
+      const detour = await this.routing.calculateDetour(driverOrigin, driverDest, pickup, dropoff);
 
       if (!detour) continue;
 
@@ -117,9 +114,9 @@ export class MatchingService {
    * Find matching driver rides for a newly posted ride request.
    * Same logic, reversed perspective.
    */
-  async findDriversForRider(request: RideRequest): Promise<{ride: Ride; detour: DetourResult}[]> {
+  async findDriversForRider(request: RideRequest): Promise<{ ride: Ride; detour: DetourResult }[]> {
     const openRides = this.repo.getOpenRides();
-    const results: {ride: Ride; detour: DetourResult}[] = [];
+    const results: { ride: Ride; detour: DetourResult }[] = [];
 
     const earliest = new Date(request.earliestDeparture);
     const latest = new Date(request.latestDeparture);
@@ -134,35 +131,36 @@ export class MatchingService {
       if (departureDate < earliest || departureDate > latest) continue;
 
       // Rough proximity check
-      const routeLength = haversineKm(
-        ride.originLat, ride.originLng, ride.destLat, ride.destLng
-      );
+      const routeLength = haversineKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
       const pickupToOrigin = haversineKm(
-        request.pickupLat, request.pickupLng,
-        ride.originLat, ride.originLng
+        request.pickupLat,
+        request.pickupLng,
+        ride.originLat,
+        ride.originLng,
       );
       if (pickupToOrigin > routeLength) continue;
 
       // Min distance
       const rideDistance = haversineKm(
-        request.pickupLat, request.pickupLng,
-        request.dropoffLat, request.dropoffLng
+        request.pickupLat,
+        request.pickupLng,
+        request.dropoffLat,
+        request.dropoffLng,
       );
       if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) continue;
 
       // Same-pair cooldown
       const recentCount = this.repo.getRecentSamePairCount(
-        ride.driverId, request.riderId,
-        POINTS.SAME_PAIR_COOLDOWN_HOURS
+        ride.driverId,
+        request.riderId,
+        POINTS.SAME_PAIR_COOLDOWN_HOURS,
       );
       if (recentCount > 0) continue;
 
       const driverOrigin: GeoPoint = { lat: ride.originLat, lng: ride.originLng };
       const driverDest: GeoPoint = { lat: ride.destLat, lng: ride.destLng };
 
-      const detour = await this.routing.calculateDetour(
-        driverOrigin, driverDest, pickup, dropoff
-      );
+      const detour = await this.routing.calculateDetour(driverOrigin, driverDest, pickup, dropoff);
       if (!detour) continue;
 
       const maxDetourSeconds = ride.maxDetourMinutes * 60;
@@ -179,11 +177,7 @@ export class MatchingService {
    * Create a match between a ride and a request.
    * Generates confirmation code and updates statuses.
    */
-  createMatch(
-    ride: Ride,
-    request: RideRequest,
-    detour: DetourResult,
-  ) {
+  createMatch(ride: Ride, request: RideRequest, detour: DetourResult) {
     const code = generateCode(DEFAULTS.CONFIRMATION_CODE_LENGTH);
 
     const match = this.repo.createMatch({

@@ -14,13 +14,15 @@ const GeminiPartSchema = z.object({
 });
 
 const GeminiResponseSchema = z.object({
-  candidates: z.array(
-    z.object({
-      content: z.object({
-        parts: z.array(GeminiPartSchema),
+  candidates: z
+    .array(
+      z.object({
+        content: z.object({
+          parts: z.array(GeminiPartSchema),
+        }),
       }),
-    })
-  ).optional(),
+    )
+    .optional(),
 });
 
 /**
@@ -39,7 +41,12 @@ export class CarRecognitionService {
   private model: string;
   private licenseLookup?: LicenseLookupService;
 
-  constructor(geminiApiKey: string, botToken: string, licenseLookup?: LicenseLookupService, model = "gemini-2.5-flash-lite") {
+  constructor(
+    geminiApiKey: string,
+    botToken: string,
+    licenseLookup?: LicenseLookupService,
+    model = "gemini-2.5-flash-lite",
+  ) {
     this.geminiApiKey = geminiApiKey;
     this.botToken = botToken;
     this.licenseLookup = licenseLookup;
@@ -74,7 +81,7 @@ export class CarRecognitionService {
   private async getTelegramFile(fileId: string): Promise<{ file_path: string } | null> {
     try {
       const res = await fetch(
-        `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`
+        `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`,
       );
       const parsed = TelegramGetFileSchema.safeParse(await res.json());
       if (!parsed.success) {
@@ -137,12 +144,15 @@ If this is not a car photo, set the error field to "not_a_car".`,
             responseJsonSchema: {
               type: "object",
               properties: {
-                plateNumber: { type: "string", description: "License plate digits only, e.g. 12345678" },
-                make:        { type: "string", description: "Car manufacturer" },
-                model:       { type: "string", description: "Car model name" },
-                color:       { type: "string", description: "Car color" },
-                year:        { type: "integer", description: "Model year" },
-                error:       { type: "string", description: "Set to 'not_a_car' if image has no car" },
+                plateNumber: {
+                  type: "string",
+                  description: "License plate digits only, e.g. 12345678",
+                },
+                make: { type: "string", description: "Car manufacturer" },
+                model: { type: "string", description: "Car model name" },
+                color: { type: "string", description: "Car color" },
+                year: { type: "integer", description: "Model year" },
+                error: { type: "string", description: "Set to 'not_a_car' if image has no car" },
               },
             },
           },
@@ -158,7 +168,10 @@ If this is not a car photo, set the error field to "not_a_car".`,
       // Thinking models (e.g. gemini-2.5-flash) prepend thought parts and may
       // split the response across several content parts; join non-thought parts.
       const parts = data.candidates?.[0]?.content?.parts ?? [];
-      const text = parts.filter((p) => !p.thought).map((p) => p.text ?? "").join("");
+      const text = parts
+        .filter((p) => !p.thought)
+        .map((p) => p.text ?? "")
+        .join("");
       if (!text) {
         console.error("Gemini vision: empty response", JSON.stringify(data));
         return null;
@@ -209,7 +222,7 @@ If this is not a car photo, set the error field to "not_a_car".`,
    * Visible for testing
    */
   detectImageType(buffer: Buffer): string {
-    if (buffer[0] === 0xFF && buffer[1] === 0xD8) return "image/jpeg";
+    if (buffer[0] === 0xff && buffer[1] === 0xd8) return "image/jpeg";
     if (buffer[0] === 0x89 && buffer[1] === 0x50) return "image/png";
     if (buffer[0] === 0x52 && buffer[1] === 0x49) return "image/webp";
     return "image/jpeg";

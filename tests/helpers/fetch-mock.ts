@@ -38,5 +38,5 @@ export function httpError(status = 500): () => Response {
       ok: false,
       status,
       json: async () => ({}),
-    } as unknown as Response);
+    }) as unknown as Response;
 }

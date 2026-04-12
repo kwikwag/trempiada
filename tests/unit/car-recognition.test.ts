@@ -25,7 +25,6 @@ function telegramFileResponse(filePath: string) {
   return { ok: true, result: { file_path: filePath } };
 }
 
-
 // ---------------------------------------------------------------------------
 // Gemini vision response handling
 // ---------------------------------------------------------------------------
@@ -33,11 +32,17 @@ function telegramFileResponse(filePath: string) {
 test("analyzeCarImage returns CarDetails when Gemini responds correctly", async () => {
   const service = new CarRecognitionService("fake-key", "fake-token");
   const payload = geminiResponse(
-    JSON.stringify({ plateNumber: "457-11-302", make: "Audi", model: "Mexico", color: "Black", year: 2021 })
+    JSON.stringify({
+      plateNumber: "457-11-302",
+      make: "Audi",
+      model: "Mexico",
+      color: "Black",
+      year: 2021,
+    }),
   );
 
   const result = await withFetch({ "generativelanguage.googleapis.com": () => payload }, () =>
-    service.analyzeCarImage(Buffer.from("fake"))
+    service.analyzeCarImage(Buffer.from("fake")),
   );
 
   assert.ok(result, "expected a result");
@@ -54,7 +59,7 @@ test("analyzeCarImage returns null when Gemini signals not_a_car", async () => {
   const payload = geminiResponse(JSON.stringify({ error: "not_a_car" }));
 
   const result = await withFetch({ "generativelanguage.googleapis.com": () => payload }, () =>
-    service.analyzeCarImage(Buffer.from("fake"))
+    service.analyzeCarImage(Buffer.from("fake")),
   );
 
   assert.equal(result, null);
@@ -63,8 +68,9 @@ test("analyzeCarImage returns null when Gemini signals not_a_car", async () => {
 test("analyzeCarImage returns null when Gemini response has no candidates", async () => {
   const service = new CarRecognitionService("fake-key", "fake-token");
 
-  const result = await withFetch({ "generativelanguage.googleapis.com": () => ({ candidates: [] }) }, () =>
-    service.analyzeCarImage(Buffer.from("fake"))
+  const result = await withFetch(
+    { "generativelanguage.googleapis.com": () => ({ candidates: [] }) },
+    () => service.analyzeCarImage(Buffer.from("fake")),
   );
 
   assert.equal(result, null);
@@ -76,7 +82,7 @@ test("analyzeCarImage returns null when Gemini response fails schema validation"
   const invalid = { candidates: "not-an-array" };
 
   const result = await withFetch({ "generativelanguage.googleapis.com": () => invalid }, () =>
-    service.analyzeCarImage(Buffer.from("fake"))
+    service.analyzeCarImage(Buffer.from("fake")),
   );
 
   assert.equal(result, null);
@@ -88,7 +94,7 @@ test("analyzeCarImage returns null when Gemini candidate is missing content.part
   const invalid = { candidates: [{ content: { parts: "not-an-array" } }] };
 
   const result = await withFetch({ "generativelanguage.googleapis.com": () => invalid }, () =>
-    service.analyzeCarImage(Buffer.from("fake"))
+    service.analyzeCarImage(Buffer.from("fake")),
   );
 
   assert.equal(result, null);
@@ -100,7 +106,7 @@ test("extractFromTelegramPhoto returns null when getFile response fails schema v
   const invalid = { status: "ok" };
 
   const result = await withFetch({ "api.telegram.org": () => invalid }, () =>
-    service.extractFromTelegramPhoto("file-id")
+    service.extractFromTelegramPhoto("file-id"),
   );
 
   assert.equal(result, null);
@@ -111,26 +117,39 @@ test("extractFromTelegramPhoto returns null when getFile response fails schema v
 // ---------------------------------------------------------------------------
 
 test("analyzeCarImage enriches details from license DB when plate matches", async () => {
-  const { dbPath, cleanup } = createTempLicenseDb(TEST_PLATE_NO, "Audi", "Mexico", "Black", 2021, 5);
+  const { dbPath, cleanup } = createTempLicenseDb(
+    TEST_PLATE_NO,
+    "Audi",
+    "Mexico",
+    "Black",
+    2021,
+    5,
+  );
   const lookup = new LicenseLookupService(dbPath);
   const service = new CarRecognitionService("fake-key", "fake-token", lookup);
 
   // Gemini returns a slightly different model name; DB should win
   const payload = geminiResponse(
-    JSON.stringify({ plateNumber: "457-11-302", make: "Audi", model: "A3", color: "Dark", year: 2019 })
+    JSON.stringify({
+      plateNumber: "457-11-302",
+      make: "Audi",
+      model: "A3",
+      color: "Dark",
+      year: 2019,
+    }),
   );
 
   try {
     const result = await withFetch({ "generativelanguage.googleapis.com": () => payload }, () =>
-      service.analyzeCarImage(Buffer.from("fake"))
+      service.analyzeCarImage(Buffer.from("fake")),
     );
 
     assert.ok(result);
     assert.equal(result.plateNumber, String(TEST_PLATE_NO));
-    assert.equal(result.model, "Mexico");  // from DB
-    assert.equal(result.color, "Black");   // from DB
-    assert.equal(result.year, 2021);       // from DB
-    assert.equal(result.seatCount, 5);     // from DB
+    assert.equal(result.model, "Mexico"); // from DB
+    assert.equal(result.color, "Black"); // from DB
+    assert.equal(result.year, 2021); // from DB
+    assert.equal(result.seatCount, 5); // from DB
   } finally {
     lookup.close();
     cleanup();
@@ -143,12 +162,18 @@ test("analyzeCarImage falls back to Gemini data when plate is not in DB", async 
   const service = new CarRecognitionService("fake-key", "fake-token", lookup);
 
   const payload = geminiResponse(
-    JSON.stringify({ plateNumber: "457-11-302", make: "Audi", model: "Mexico", color: "Black", year: 2021 })
+    JSON.stringify({
+      plateNumber: "457-11-302",
+      make: "Audi",
+      model: "Mexico",
+      color: "Black",
+      year: 2021,
+    }),
   );
 
   try {
     const result = await withFetch({ "generativelanguage.googleapis.com": () => payload }, () =>
-      service.analyzeCarImage(Buffer.from("fake"))
+      service.analyzeCarImage(Buffer.from("fake")),
     );
 
     assert.ok(result);
@@ -169,7 +194,7 @@ test("extractFromTelegramPhoto returns null when getFile fails", async () => {
   const service = new CarRecognitionService("fake-key", "fake-token");
 
   const result = await withFetch({ "api.telegram.org": () => ({ ok: false }) }, () =>
-    service.extractFromTelegramPhoto("bad-file-id")
+    service.extractFromTelegramPhoto("bad-file-id"),
   );
 
   assert.equal(result, null);
@@ -183,7 +208,10 @@ test("extractFromTelegramPhoto returns null when download fails", async () => {
   global.fetch = (async (_input: FetchInput) => {
     callCount++;
     if (callCount === 1) {
-      return { ok: true, json: async () => telegramFileResponse("photos/file.jpg") } as unknown as Response;
+      return {
+        ok: true,
+        json: async () => telegramFileResponse("photos/file.jpg"),
+      } as unknown as Response;
     }
     throw new Error("network error");
   }) as typeof global.fetch;
@@ -197,17 +225,29 @@ test("extractFromTelegramPhoto returns null when download fails", async () => {
 
 test("extractFromTelegramPhoto chains Telegram download into analyzeCarImage", async () => {
   const service = new CarRecognitionService("fake-key", "fake-token");
-  const jpegHeader = Buffer.from([0xFF, 0xD8, ...Array(10).fill(0)]);
+  const jpegHeader = Buffer.from([0xff, 0xd8, ...Array(10).fill(0)]);
   const payload = geminiResponse(
-    JSON.stringify({ plateNumber: "457-11-302", make: "Audi", model: "Mexico", color: "Black", year: 2021 })
+    JSON.stringify({
+      plateNumber: "457-11-302",
+      make: "Audi",
+      model: "Mexico",
+      color: "Black",
+      year: 2021,
+    }),
   );
 
   const saved = global.fetch;
   global.fetch = (async (input: FetchInput) => {
     const url = input.toString();
-    if (url.includes("getFile"))          return { ok: true, json: async () => telegramFileResponse("photos/file.jpg") } as unknown as Response;
-    if (url.includes("file/bot"))         return { ok: true, arrayBuffer: async () => jpegHeader.buffer } as unknown as Response;
-    if (url.includes("generativelanguage")) return { ok: true, json: async () => payload } as unknown as Response;
+    if (url.includes("getFile"))
+      return {
+        ok: true,
+        json: async () => telegramFileResponse("photos/file.jpg"),
+      } as unknown as Response;
+    if (url.includes("file/bot"))
+      return { ok: true, arrayBuffer: async () => jpegHeader.buffer } as unknown as Response;
+    if (url.includes("generativelanguage"))
+      return { ok: true, json: async () => payload } as unknown as Response;
     throw new Error(`Unexpected: ${url}`);
   }) as typeof global.fetch;
 
@@ -226,7 +266,7 @@ test("extractFromTelegramPhoto chains Telegram download into analyzeCarImage", a
 
 test("detectImageType detects JPEG by magic bytes", () => {
   const service = new CarRecognitionService("k", "t");
-  assert.equal(service.detectImageType(Buffer.from([0xFF, 0xD8, 0x00])), "image/jpeg");
+  assert.equal(service.detectImageType(Buffer.from([0xff, 0xd8, 0x00])), "image/jpeg");
 });
 
 test("detectImageType detects PNG by magic bytes", () => {
@@ -250,19 +290,19 @@ test("detectImageType defaults to JPEG for unknown format", () => {
 
 test("thinkingConfig returns thinkingBudget:0 for gemini-2 models", () => {
   for (const model of ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]) {
-    const cfg = (new CarRecognitionService("k", "t", undefined, model)).thinkingConfig();
+    const cfg = new CarRecognitionService("k", "t", undefined, model).thinkingConfig();
     assert.deepEqual(cfg, { thinkingBudget: 0 }, `expected gemini-2 config for ${model}`);
   }
 });
 
 test("thinkingConfig returns thinkingLevel:minimal for gemini-3 models", () => {
   for (const model of ["gemini-3.1-flash-lite-preview", "gemini-3.0-flash"]) {
-    const cfg = (new CarRecognitionService("k", "t", undefined, model)).thinkingConfig();
+    const cfg = new CarRecognitionService("k", "t", undefined, model).thinkingConfig();
     assert.deepEqual(cfg, { thinkingLevel: "minimal" }, `expected gemini-3 config for ${model}`);
   }
 });
 
 test("thinkingConfig returns empty object for unknown model families", () => {
-  const cfg = (new CarRecognitionService("k", "t", undefined, "some-other-model")).thinkingConfig();
+  const cfg = new CarRecognitionService("k", "t", undefined, "some-other-model").thinkingConfig();
   assert.deepEqual(cfg, {});
 });

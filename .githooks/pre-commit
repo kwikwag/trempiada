@@ -40,5 +40,6 @@ if [ -n "$staged_files" ]; then
 fi
 
 npm run typecheck
+npm run format:check
 npm run lint
 npm test
