@@ -14,9 +14,11 @@
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && npm run hooks:install || true",
     "test": "node --test -r ts-node/register/transpile-only 'tests/unit/**/*.test.ts'",
     "test:e2e": "node --test -r ts-node/register/transpile-only 'tests/e2e/**/*.test.ts'",
-    "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,e2e}/**/*.test.ts'",
+    "test:integration": "node --test -r ts-node/register/transpile-only 'tests/integration/**/*.test.ts'",
+    "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,integration,e2e}/**/*.test.ts'",
     "test:unit": "npm test",
-    "typecheck": "tsc -p tsconfig.check.json --noEmit"
+    "typecheck": "tsc -p tsconfig.check.json --noEmit",
+    "pre-commit": "npm run typecheck && npm run format && npm run lint"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

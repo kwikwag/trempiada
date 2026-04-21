@@ -149,3 +149,38 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
 function toRad(deg: number): number {
   return deg * (Math.PI / 180);
 }
+
+/**
+ * Parse a user-typed time string ("18:00", "6:30 PM", "now") into a Date.
+ * If the parsed time is more than 30 minutes in the past, assumes tomorrow.
+ * Returns null if the input cannot be parsed.
+ */
+export function parseTimeToday(input: string): Date | null {
+  const trimmed = input.trim().toLowerCase();
+  if (trimmed === "now") return new Date();
+
+  const now = new Date();
+
+  // Match "HH:MM" or "H:MM" with optional AM/PM
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?:\s*(am|pm))?$/);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const meridiem = match[3];
+
+  if (minutes < 0 || minutes > 59) return null;
+  if (meridiem === "pm" && hours < 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23) return null;
+
+  const candidate = new Date(now);
+  candidate.setHours(hours, minutes, 0, 0);
+
+  // If more than 30 min in the past, assume the driver means tomorrow
+  if (candidate.getTime() < now.getTime() - 30 * 60 * 1000) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  return candidate;
+}

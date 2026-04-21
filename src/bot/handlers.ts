@@ -8,13 +8,14 @@ import type { CarRecognitionService } from "../services/car-recognition";
 import type { GeocodingService } from "../services/geocoding";
 import { WazeService, extractWazeDriveUrl } from "../services/waze";
 import { DEFAULTS, POINTS } from "../types";
-import type { VerificationType } from "../types";
+import type { Car, VerificationType } from "../types";
 import {
   formatTrustProfile,
   formatCarInfo,
   formatRideSummary,
   formatDuration,
   generateCode,
+  parseTimeToday,
 } from "../utils";
 
 /**
@@ -35,56 +36,141 @@ export function registerHandlers(
 ) {
   const waze = new WazeService();
 
-  async function createWazeDriveFromUrl(
+  function rideReviewContent(telegramId: number) {
+    const session = sessions.get(telegramId);
+    const summary = formatRideSummary(
+      session.data.originLabel,
+      session.data.destLabel,
+      session.data.estimatedDuration,
+      session.data.departureTime,
+      session.data.seats,
+      session.data.maxDetour,
+    );
+
+    return {
+      text: `Here's your ride:\n\n${summary}\n\n`,
+      keyboard: Markup.inlineKeyboard([
+        [Markup.button.callback("Post this ride ✅", "post_ride")],
+        [Markup.button.callback("Edit something ✏️", "edit_ride")],
+        [Markup.button.callback("Cancel", "cancel_ride_flow")],
+      ]),
+    };
+  }
+
+  async function replyWithRideReview(ctx: Context, telegramId: number): Promise<void> {
+    const review = rideReviewContent(telegramId);
+    await ctx.reply(review.text, review.keyboard);
+  }
+
+  function setRideReviewFromCar(telegramId: number, car: Car, data: Record<string, unknown>): void {
+    sessions.setScene(telegramId, "ride_review", {
+      carId: car.id,
+      seats: car.seatCount,
+      carSeatCount: car.seatCount,
+      maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
+      ...data,
+    });
+  }
+
+  async function promptDriverVerification(
+    ctx: Context,
+    telegramId: number,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    sessions.setScene(telegramId, "registration_verification", data);
+    await ctx.reply(
+      "Drivers need at least one identity verification to offer rides. This helps riders feel safe.\n\n" +
+        "Choose a verification method:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Facebook", "verify_facebook")],
+        [Markup.button.callback("LinkedIn", "verify_linkedin")],
+        [Markup.button.callback("Google", "verify_google")],
+        [Markup.button.callback("Email", "verify_email")],
+      ]),
+    );
+  }
+
+  async function ensureDriverReady(
+    ctx: Context,
+    telegramId: number,
+    pendingData: Record<string, unknown> = {},
+  ): Promise<Car | null> {
+    const session = sessions.get(telegramId);
+
+    if (!session.userId) {
+      const existing = repo.getUserByTelegramId(telegramId);
+      if (existing) {
+        sessions.setUserId(telegramId, existing.id);
+      } else if (pendingData.pendingWazeDriveUrl) {
+        sessions.setScene(telegramId, "registration_name", pendingData);
+        await ctx.reply(
+          "I can set up that Waze drive for you. First, let's create your account.\n\n" +
+            "What's your first name? (This is what others will see.)",
+        );
+        return null;
+      } else {
+        await ctx.reply("You need to register first. Type /start to begin.");
+        return null;
+      }
+    }
+
+    const readySession = sessions.get(telegramId);
+    if (!readySession.userId) return null;
+
+    const user = repo.getUserById(readySession.userId);
+    if (!user || user.isSuspended) {
+      await ctx.reply("Your account is currently suspended. Contact support for help.");
+      return null;
+    }
+
+    const car = repo.getActiveCar(readySession.userId);
+    if (!car) {
+      sessions.setScene(telegramId, "car_registration_photo", pendingData);
+      await ctx.reply(
+        (pendingData.pendingWazeDriveUrl ? "I saved the Waze drive. " : "") +
+          "First time driving? Let's register your car.\n\n" +
+          "Send me a photo of the back of your car so the license plate is visible.",
+      );
+      return null;
+    }
+
+    const verCount = repo.getVerificationCount(readySession.userId);
+    if (verCount < DEFAULTS.MIN_TRUST_VERIFICATIONS) {
+      await promptDriverVerification(ctx, telegramId, {
+        returnTo: pendingData.pendingWazeDriveUrl ? "waze_drive" : "ride_origin",
+        ...pendingData,
+      });
+      return null;
+    }
+
+    return car;
+  }
+
+  async function startDrivePostingFlow(ctx: Context, telegramId: number): Promise<void> {
+    const car = await ensureDriverReady(ctx, telegramId);
+    if (!car) return;
+
+    sessions.setScene(telegramId, "ride_origin", {
+      carId: car.id,
+      seats: car.seatCount,
+      carSeatCount: car.seatCount,
+      maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
+    });
+    await ctx.reply(
+      `Where are you headed?\n\n` +
+        `Send me your starting point — you can:\n` +
+        `📍 Drop a pin (tap the attachment icon)\n` +
+        `✍️ Type an address or place name`,
+    );
+  }
+
+  async function prepareWazeDriveReview(
     ctx: Context,
     telegramId: number,
     wazeUrl: string,
   ): Promise<boolean> {
-    const session = sessions.get(telegramId);
-
-    if (!session.userId) {
-      sessions.setScene(telegramId, "registration_name", { pendingWazeDriveUrl: wazeUrl });
-      await ctx.reply(
-        "I can post that Waze drive for you. First, let's set up your account.\n\n" +
-          "What's your first name? (This is what others will see.)",
-      );
-      return true;
-    }
-
-    const user = repo.getUserById(session.userId);
-    if (!user || user.isSuspended) {
-      await ctx.reply("Your account is currently suspended. Contact support for help.");
-      return true;
-    }
-
-    const car = repo.getActiveCar(session.userId);
-    if (!car) {
-      sessions.setScene(telegramId, "car_registration_photo", { pendingWazeDriveUrl: wazeUrl });
-      await ctx.reply(
-        "I saved the Waze drive. First time driving? Let's register your car.\n\n" +
-          "Send me a photo of the back of your car so the license plate is visible.",
-      );
-      return true;
-    }
-
-    const verCount = repo.getVerificationCount(session.userId);
-    if (verCount < DEFAULTS.MIN_TRUST_VERIFICATIONS) {
-      sessions.setScene(telegramId, "registration_verification", {
-        returnTo: "waze_drive",
-        pendingWazeDriveUrl: wazeUrl,
-      });
-      await ctx.reply(
-        "I saved the Waze drive. Drivers need at least one identity verification before posting rides.\n\n" +
-          "Choose a verification method:",
-        Markup.inlineKeyboard([
-          [Markup.button.callback("Facebook", "verify_facebook")],
-          [Markup.button.callback("LinkedIn", "verify_linkedin")],
-          [Markup.button.callback("Google", "verify_google")],
-          [Markup.button.callback("Email", "verify_email")],
-        ]),
-      );
-      return true;
-    }
+    const car = await ensureDriverReady(ctx, telegramId, { pendingWazeDriveUrl: wazeUrl });
+    if (!car) return true;
 
     await ctx.reply("Importing your Waze drive...");
 
@@ -96,52 +182,66 @@ export function registerHandlers(
       return true;
     }
 
-    const ride = repo.createRide({
-      driverId: session.userId,
-      carId: car.id,
-      originLat: drive.originLat,
-      originLng: drive.originLng,
-      destLat: drive.destLat,
-      destLng: drive.destLng,
-      originLabel: drive.originLabel,
-      destLabel: drive.destLabel,
-      routeGeometry: null,
-      estimatedDuration: drive.etaSeconds,
-      departureTime: new Date().toISOString(),
-      maxDetourMinutes: DEFAULTS.MAX_DETOUR_MINUTES,
-      availableSeats: car.seatCount,
-    });
-
-    await ctx.reply(
-      "Waze drive posted! ✅\n\n" +
-        formatRideSummary(
-          drive.originLabel,
-          drive.destLabel,
-          drive.etaSeconds,
-          ride.departureTime,
-          car.seatCount,
-          DEFAULTS.MAX_DETOUR_MINUTES,
-        ) +
-        "\n\nSearching for riders...",
+    const routeResult = await routing.getRoute(
+      { lat: drive.originLat, lng: drive.originLng },
+      { lat: drive.destLat, lng: drive.destLng },
     );
 
-    const candidates = await matching.findRidersForDriver(ride);
+    setRideReviewFromCar(telegramId, car, {
+      originLat: drive.originLat,
+      originLng: drive.originLng,
+      originLabel: drive.originLabel,
+      destLat: drive.destLat,
+      destLng: drive.destLng,
+      destLabel: drive.destLabel,
+      routeGeometry: routeResult?.geometry || null,
+      estimatedDuration: drive.etaSeconds,
+      departureTime: new Date().toISOString(),
+    });
+
+    await replyWithRideReview(ctx, telegramId);
+    return true;
+  }
+
+  async function showDriverCandidates(
+    ctx: Context,
+    telegramId: number,
+    rideId: number,
+    candidates: MatchCandidate[],
+  ): Promise<void> {
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    // Proactively notify riders that a driver is considering them
+    for (const candidate of candidates) {
+      const rider = repo.getUserById(candidate.request.riderId);
+      if (!rider) continue;
+      try {
+        await ctx.telegram.sendMessage(
+          rider.telegramId,
+          "🔔 A driver heading your way is reviewing your ride request! You'll get a confirmation if they accept.",
+        );
+      } catch {
+        // Rider may not have started the bot
+      }
+    }
+
     if (candidates.length === 0) {
       await ctx.reply(
         "No riders along your route right now.\n" +
-          "I'll notify you if someone matches before you arrive.\n\n" +
+          "I'll notify you if someone matches before you depart.\n\n" +
           "💡 Share your invite link to get more people on TrempiadaBot:\n" +
           `t.me/TrempiadaBot?start=ref_${session.userId}`,
       );
-      sessions.setScene(telegramId, "idle", {});
-      return true;
+      sessions.reset(telegramId);
+      return;
     }
 
     const candidate = candidates[0];
     const rider = repo.getUserById(candidate.request.riderId);
     if (!rider) {
-      sessions.setScene(telegramId, "idle", {});
-      return true;
+      sessions.reset(telegramId);
+      return;
     }
 
     const riderVerifications = repo.getPublicVerifications(rider.id);
@@ -165,12 +265,44 @@ export function registerHandlers(
       ]),
     );
 
-    sessions.setScene(telegramId, "idle", {
-      rideId: ride.id,
+    sessions.updateData(telegramId, {
+      rideId,
       candidates,
       candidateIndex: 0,
     });
-    return true;
+  }
+
+  async function postRideFromSession(ctx: Context, telegramId: number): Promise<void> {
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const d = session.data;
+    const ride = repo.createRide({
+      driverId: session.userId,
+      carId: d.carId,
+      originLat: d.originLat,
+      originLng: d.originLng,
+      destLat: d.destLat,
+      destLng: d.destLng,
+      originLabel: d.originLabel,
+      destLabel: d.destLabel,
+      routeGeometry: d.routeGeometry,
+      estimatedDuration: d.estimatedDuration,
+      departureTime: d.departureTime,
+      maxDetourMinutes: d.maxDetour,
+      availableSeats: d.seats,
+    });
+
+    const candidates = await matching.findRidersForDriver(ride);
+    await showDriverCandidates(ctx, telegramId, ride.id, candidates);
+  }
+
+  async function createWazeDriveFromUrl(
+    ctx: Context,
+    telegramId: number,
+    wazeUrl: string,
+  ): Promise<boolean> {
+    return prepareWazeDriveReview(ctx, telegramId, wazeUrl);
   }
 
   // ============================================================
@@ -205,66 +337,7 @@ export function registerHandlers(
   // /drive — Start offering a ride (triggers car registration if needed)
   // ============================================================
   bot.command("drive", async (ctx) => {
-    const telegramId = ctx.from!.id;
-    const session = sessions.get(telegramId);
-
-    if (!session.userId) {
-      await ctx.reply("You need to register first. Type /start to begin.");
-      return;
-    }
-
-    const user = repo.getUserById(session.userId);
-    if (!user || user.isSuspended) {
-      await ctx.reply("Your account is currently suspended. Contact support for help.");
-      return;
-    }
-
-    // Check if driver has a verified car
-    const car = repo.getActiveCar(session.userId);
-    if (!car) {
-      // Need to register a car first
-      sessions.setScene(telegramId, "car_registration_photo", {});
-      await ctx.reply(
-        `First time driving? Let's register your car.\n\n` +
-          `Send me a photo of the back of your car ` +
-          `(so the license plate is visible). ` +
-          `I'll grab the details automatically.`,
-      );
-      return;
-    }
-
-    // Check minimum verification for drivers
-    const verCount = repo.getVerificationCount(session.userId);
-    if (verCount < DEFAULTS.MIN_TRUST_VERIFICATIONS) {
-      sessions.setScene(telegramId, "registration_verification", {
-        returnTo: "ride_origin",
-      });
-      await ctx.reply(
-        `Drivers need at least one identity verification ` +
-          `to offer rides. This helps riders feel safe.\n\n` +
-          `Choose a verification method:`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback("Facebook", "verify_facebook")],
-          [Markup.button.callback("LinkedIn", "verify_linkedin")],
-          [Markup.button.callback("Google", "verify_google")],
-          [Markup.button.callback("Email", "verify_email")],
-        ]),
-      );
-      return;
-    }
-
-    // Start ride posting flow
-    sessions.setScene(telegramId, "ride_origin", {
-      carId: car.id,
-      seats: car.seatCount,
-      maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
-    });
-    await ctx.reply(
-      `Where are you headed?\n\n` +
-        `Send me your starting point — you can:\n` +
-        `📍 Drop a pin (tap the attachment icon)\n` +
-        `✍️ Type an address or place name`,
-    );
+    await startDrivePostingFlow(ctx, ctx.from!.id);
   });
 
   // ============================================================
@@ -907,9 +980,88 @@ export function registerHandlers(
       return;
     }
 
+    // --- Custom departure time entry ---
+    if (session.scene === "ride_departure_custom" && "text" in ctx.message) {
+      const departure = parseTimeToday(ctx.message.text.trim());
+      if (!departure) {
+        await ctx.reply("I couldn't read that time. Try something like *18:00* or *6:30 PM*.", {
+          parse_mode: "Markdown",
+        });
+        return;
+      }
+      sessions.updateData(telegramId, { departureTime: departure.toISOString() });
+      sessions.setScene(telegramId, "ride_review");
+      await replyWithRideReview(ctx, telegramId);
+      return;
+    }
+
+    // --- Car field editing ---
+    if (session.scene === "car_edit" && "text" in ctx.message) {
+      const field = session.data.carEditField as string;
+      const carDetails = { ...session.data.carDetails };
+      const text = ctx.message.text.trim();
+
+      if (field === "plate") {
+        carDetails.plateNumber = text;
+      } else if (field === "seats") {
+        const seats = parseInt(text, 10);
+        if (isNaN(seats) || seats < 1 || seats > 8) {
+          await ctx.reply("Please enter a number between 1 and 8.");
+          return;
+        }
+        carDetails.seatCount = seats;
+      } else if (field === "make") {
+        const parts = text.split(" ");
+        carDetails.make = parts[0];
+        if (parts.length > 1) carDetails.model = parts.slice(1).join(" ");
+      } else if (field === "year") {
+        const year = parseInt(text, 10);
+        if (isNaN(year) || year < 1990 || year > new Date().getFullYear() + 1) {
+          await ctx.reply("Please enter a valid year.");
+          return;
+        }
+        carDetails.year = year;
+      }
+
+      sessions.updateData(telegramId, { carDetails, carEditField: undefined });
+      sessions.setScene(telegramId, "car_registration_confirm");
+
+      await ctx.reply(
+        `Updated! Here's what I have:\n\n` +
+          `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
+          (carDetails.year ? `, ${carDetails.year}` : "") +
+          `\n` +
+          `🔢 Plate: ${carDetails.plateNumber}\n` +
+          `👥 Seats: ${carDetails.seatCount}\n\nDoes this look right?`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
+          [Markup.button.callback("Fix something", "car_confirm_edit")],
+          [Markup.button.callback("Try another photo", "car_confirm_retry")],
+        ]),
+      );
+      return;
+    }
+
     // --- Rating ---
     if (session.scene === "rating" && "text" in ctx.message) {
       // Handled by callback queries for the star buttons
+      return;
+    }
+
+    // --- Ride review editing ---
+    if (session.scene === "ride_edit" && "text" in ctx.message) {
+      if (session.data.editField !== "seats") return;
+
+      const seats = Number.parseInt(ctx.message.text.trim(), 10);
+      const maxSeats = session.data.carSeatCount ?? session.data.seats;
+      if (!Number.isInteger(seats) || seats < 1 || seats > maxSeats) {
+        await ctx.reply(`Enter a number from 1 to ${maxSeats}.`);
+        return;
+      }
+
+      sessions.updateData(telegramId, { seats, editField: undefined });
+      sessions.setScene(telegramId, "ride_review");
+      await replyWithRideReview(ctx, telegramId);
       return;
     }
   });
@@ -969,6 +1121,37 @@ export function registerHandlers(
     await ctx.editMessageText("No problem. Send another photo of your car.");
   });
 
+  bot.action("car_confirm_edit", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+      "What do you want to fix?",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Plate number", "car_edit_plate")],
+        [Markup.button.callback("Seats available", "car_edit_seats")],
+        [Markup.button.callback("Make / model", "car_edit_make")],
+        [Markup.button.callback("Year", "car_edit_year")],
+        [Markup.button.callback("Try another photo instead", "car_confirm_retry")],
+      ]),
+    );
+  });
+
+  const carEditPrompts: Record<string, string> = {
+    plate: "Enter the correct plate number:",
+    seats: "How many passenger seats? (not counting the driver, 1–8)",
+    make: "Enter the make and model (e.g. *Toyota Corolla*):",
+    year: "Enter the year of manufacture (e.g. *2019*):",
+  };
+
+  for (const field of ["plate", "seats", "make", "year"] as const) {
+    bot.action(`car_edit_${field}`, async (ctx) => {
+      await ctx.answerCbQuery();
+      const telegramId = ctx.from!.id;
+      sessions.updateData(telegramId, { carEditField: field });
+      sessions.setScene(telegramId, "car_edit");
+      await ctx.editMessageText(carEditPrompts[field], { parse_mode: "Markdown" });
+    });
+  }
+
   // --- Departure time callbacks ---
   for (const [action, minutes] of [
     ["depart_now", 0],
@@ -978,7 +1161,6 @@ export function registerHandlers(
     bot.action(action, async (ctx) => {
       await ctx.answerCbQuery();
       const telegramId = ctx.from!.id;
-      const session = sessions.get(telegramId);
 
       const departure = new Date(Date.now() + minutes * 60 * 1000);
       sessions.updateData(telegramId, {
@@ -986,98 +1168,92 @@ export function registerHandlers(
       });
       sessions.setScene(telegramId, "ride_review");
 
-      const summary = formatRideSummary(
-        session.data.originLabel,
-        session.data.destLabel,
-        session.data.estimatedDuration,
-        departure.toISOString(),
-        session.data.seats,
-        session.data.maxDetour,
-      );
-
-      await ctx.editMessageText(
-        `Here's your ride:\n\n${summary}\n\n`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback("Post this ride ✅", "post_ride")],
-          [Markup.button.callback("Edit something ✏️", "edit_ride")],
-          [Markup.button.callback("Cancel", "cancel_ride_flow")],
-        ]),
-      );
+      const review = rideReviewContent(telegramId);
+      await ctx.editMessageText(review.text, review.keyboard);
     });
   }
+
+  // --- Custom departure time ---
+  bot.action("depart_custom", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    sessions.setScene(telegramId, "ride_departure_custom");
+    await ctx.editMessageText("When are you leaving?\n\nEnter a time like *18:00* or *6:30 PM*.", {
+      parse_mode: "Markdown",
+    });
+  });
 
   // --- Post ride ---
   bot.action("post_ride", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    const session = sessions.get(telegramId);
+    const review = rideReviewContent(telegramId);
+    await ctx.editMessageText(`${review.text}Ride posted! ✅ Searching for riders...`);
+    await postRideFromSession(ctx, telegramId);
+  });
 
-    if (!session.userId) return;
-
-    const d = session.data;
-    const ride = repo.createRide({
-      driverId: session.userId,
-      carId: d.carId,
-      originLat: d.originLat,
-      originLng: d.originLng,
-      destLat: d.destLat,
-      destLng: d.destLng,
-      originLabel: d.originLabel,
-      destLabel: d.destLabel,
-      routeGeometry: d.routeGeometry,
-      estimatedDuration: d.estimatedDuration,
-      departureTime: d.departureTime,
-      maxDetourMinutes: d.maxDetour,
-      availableSeats: d.seats,
-    });
-
-    await ctx.editMessageText("Ride posted! ✅ Searching for riders...");
-
-    // Find matches
-    const candidates = await matching.findRidersForDriver(ride);
-
-    if (candidates.length === 0) {
-      await ctx.reply(
-        "No riders along your route right now.\n" +
-          "I'll notify you if someone matches before you depart.\n\n" +
-          "💡 Share your invite link to get more people on TrempiadaBot:\n" +
-          `t.me/TrempiadaBot?start=ref_${session.userId}`,
-      );
-      sessions.reset(telegramId);
-      return;
-    }
-
-    // Present first candidate
-    const candidate = candidates[0];
-    const rider = repo.getUserById(candidate.request.riderId);
-    if (!rider) return;
-
-    const riderVerifications = repo.getPublicVerifications(rider.id);
-
-    await ctx.reply(
-      `Found ${candidates.length} rider${candidates.length > 1 ? "s" : ""} along your route!\n\n` +
-        `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
-        formatTrustProfile(rider, riderVerifications, true) +
-        `\n` +
-        `📍 Pickup: ${candidate.request.pickupLabel}\n` +
-        `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
-        `↩️ Detour: ~${formatDuration(candidate.detour.addedSeconds)}`,
+  // --- Edit ride review ---
+  bot.action("edit_ride", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+      "What do you want to edit?",
       Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            `Accept ${rider.firstName}`,
-            `accept_rider_${candidate.request.id}`,
-          ),
-        ],
-        [Markup.button.callback("Skip", `skip_rider_${candidate.request.id}`)],
+        [Markup.button.callback("Seats available", "edit_ride_seats")],
+        [Markup.button.callback("Departure time", "edit_ride_departure")],
+        [Markup.button.callback("Route", "edit_ride_route")],
+        [Markup.button.callback("Back to review", "edit_ride_back")],
       ]),
     );
+  });
 
-    sessions.updateData(telegramId, {
-      rideId: ride.id,
-      candidates,
-      candidateIndex: 0,
+  bot.action("edit_ride_seats", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    const maxSeats = session.data.carSeatCount ?? session.data.seats;
+
+    sessions.updateData(telegramId, { editField: "seats" });
+    sessions.setScene(telegramId, "ride_edit");
+    await ctx.editMessageText(
+      `How many seats are available? Enter a number from 1 to ${maxSeats}.`,
+    );
+  });
+
+  bot.action("edit_ride_departure", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(
+      "When are you leaving?",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Now", "depart_now")],
+        [Markup.button.callback("In 30 min", "depart_30")],
+        [Markup.button.callback("In 1 hour", "depart_60")],
+        [Markup.button.callback("Pick a time", "depart_custom")],
+      ]),
+    );
+  });
+
+  bot.action("edit_ride_route", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+
+    sessions.setScene(telegramId, "ride_origin", {
+      carId: session.data.carId,
+      seats: session.data.seats,
+      carSeatCount: session.data.carSeatCount,
+      maxDetour: session.data.maxDetour,
     });
+    await ctx.editMessageText(
+      "Send me your starting point again.\n\n📍 Drop a pin or type an address.",
+    );
+  });
+
+  bot.action("edit_ride_back", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    sessions.setScene(telegramId, "ride_review");
+    const review = rideReviewContent(telegramId);
+    await ctx.editMessageText(review.text, review.keyboard);
   });
 
   // --- Ride request: time window selection ---

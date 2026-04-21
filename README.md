@@ -171,14 +171,3 @@ src/
 └── utils/
     └── index.ts             # Formatting, geo helpers, code generation
 ```
-
-## TODO
-
-- [ ] Geocoding service (text addresses → coordinates)
-- [ ] Waze link parsing for route import
-- [ ] OAuth flows for social verification (Facebook, LinkedIn, Google)
-- [ ] "Share ride" web page for safety
-- [ ] Admin dashboard for dispute resolution and account suspension management
-- [ ] Push notification tuning
-- [ ] Rate limiting and abuse detection refinements
-- [ ] Hebrew localization

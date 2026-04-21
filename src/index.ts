@@ -18,7 +18,7 @@ async function main() {
   // --- Validate env ---
   const BOT_TOKEN = process.env.BOT_TOKEN;
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  const DATABASE_PATH = process.env.DATABASE_PATH || "./data/trempbot.db";
+  const DATABASE_PATH = process.env.DATABASE_PATH || "./data/rides.db";
   const LICENSE_DATABASE_PATH = process.env.LICENSE_DATABASE_PATH || "./data/licenses.db";
   const OSRM_URL = process.env.OSRM_URL || "http://localhost:5000";
 
