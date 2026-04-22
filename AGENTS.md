@@ -33,7 +33,15 @@ src/
 │   └── repository.ts        # Data access layer (all SQL queries)
 ├── bot/
 │   ├── session.ts           # In-memory state machine per Telegram user
-│   └── handlers.ts          # All bot commands + message routing
+│   ├── deps.ts              # BotDeps interface (shared dependency bundle)
+│   ├── ui.ts                # Shared UI helpers (keyboards, showMainMenu, showStatus, etc.)
+│   ├── handlers.ts          # Thin wiring: middleware, notify(), assembles BotDeps, delegates to sub-handlers
+│   └── handlers/
+│       ├── account.ts       # /start, /cancel, /trust, /sos, /status, /delete + cancellation/verification actions
+│       ├── drive-posting.ts # /drive, Waze import, ride review/edit, post ride, accept/skip candidates
+│       ├── ride-request.ts  # /ride, pickup/dropoff scenes, time window selection
+│       ├── in-ride.ts       # Message relay, confirmation code, accept/skip/complete ride, ratings
+│       └── registration.ts  # Name/photo/gender scenes, car registration, car confirmation/edit
 ├── services/
 │   ├── routing.ts           # OSRM client (route calc, detour estimation)
 │   ├── matching.ts          # Core matching algorithm (driver↔rider)
@@ -45,6 +53,7 @@ src/
 ## Key Design Decisions
 
 - **Bot state machine**: Each Telegram user has a `SessionState` with a `scene` (current flow step) and `data` (temporary state). Sessions are in-memory; losing them on restart just restarts the user's current flow.
+- **Handler modularity**: `handlers.ts` is a thin wiring layer. Each sub-handler file in `handlers/` covers one user journey and exports `register*Handlers(bot, deps)` + `handle*Message(ctx, deps): Promise<boolean>`. The message handler in `handlers.ts` chains them in priority order (in-ride → drive-posting → ride-request → registration). Shared UI is in `ui.ts`; the `BotDeps` bundle is in `deps.ts`.
 - **Matching algorithm**: Quick-filter candidates by haversine distance + time window, then OSRM detour calculation for accurate results. Ranked by least detour.
 - **Points economy**: Rides are free. Drivers earn 2 pts (rating ≥4) or 1 pt (rating <4). Riders earn 0.5/0.2. New users get 5 pts. No real money touches the system.
 - **Trust model**: Drivers must complete ≥1 verification. Each verification is stored in DB; drivers control which are _visible_ to riders vs just verified by the system.
