@@ -8,6 +8,7 @@ import type { Car, Ride } from "../../types";
 import { formatTrustProfile, formatDuration, parseTimeToday } from "../../utils";
 import {
   showMainMenu,
+  replyNotRegistered,
   rideReviewContent,
   replyWithRideReview,
   resolveLocation,
@@ -624,10 +625,7 @@ export async function ensureDriverReady({
       return null;
     } else {
       deps.logger.info("driver_flow_blocked_unregistered", { telegramId });
-      await ctx.reply(
-        "You need to /start first.",
-        Markup.inlineKeyboard([[Markup.button.callback("Get started 👋", "menu_start")]]),
-      );
+      await replyNotRegistered(ctx);
       return null;
     }
   }

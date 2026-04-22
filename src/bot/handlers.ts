@@ -19,6 +19,7 @@ import {
 import { registerRideRequestHandlers, handleRideRequestMessage } from "./handlers/ride-request";
 import { registerInRideHandlers, handleInRideMessage } from "./handlers/in-ride";
 import { registerAccountHandlers } from "./handlers/account";
+import { replyNotRegistered, showMainMenu } from "./ui";
 import { formatTrustProfile } from "../utils";
 import type { Logger, LogContext } from "../logger";
 import { noopLogger } from "../logger";
@@ -244,7 +245,6 @@ export function registerHandlers({
       const verifications = repo.getVerifications(session.userId);
       const profile = formatTrustProfile({ user, verifications });
       await ctx.reply(`You're all set! 🎉\n\nYour trust profile:\n${profile}`);
-      const { showMainMenu } = await import("./ui");
       await showMainMenu(ctx, user.firstName);
       if (session.data.pendingWazeDriveUrl) {
         await createWazeDriveFromUrl({
@@ -256,7 +256,13 @@ export function registerHandlers({
       }
     }
 
-    await handleRegistrationMessage({ ctx, deps, finishRegistrationCb: finishRegistration });
+    if (await handleRegistrationMessage({ ctx, deps, finishRegistrationCb: finishRegistration }))
+      return;
+
+    const session = sessions.get(ctx.from!.id);
+    if (!session.userId) {
+      await replyNotRegistered(ctx);
+    }
   });
 
   // ---- Register bot command list in Telegram UI ----

@@ -27,6 +27,13 @@ export function statusKeyboard() {
   return Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]);
 }
 
+export async function replyNotRegistered(ctx: Context): Promise<void> {
+  await ctx.reply(
+    "TrempiadaBot connects drivers with hitchhikers in Israel.\n\nTap below to get started — it takes about 30 seconds.",
+    Markup.inlineKeyboard([[Markup.button.callback("Get started 👋", "menu_start")]]),
+  );
+}
+
 export async function showMainMenu(ctx: Context, name: string): Promise<void> {
   await ctx.reply(`What would you like to do, ${name}?`, mainMenuKeyboard());
 }

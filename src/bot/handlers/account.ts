@@ -6,6 +6,7 @@ import { POINTS } from "../../types";
 import {
   mainMenuKeyboard,
   showMainMenu,
+  replyNotRegistered,
   renderTrustProfile,
   handleSos,
   showStatus,
@@ -51,7 +52,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("/start first.", mainMenuKeyboard());
+      await replyNotRegistered(ctx);
       return;
     }
 
@@ -70,7 +71,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("/start first.", mainMenuKeyboard());
+      await replyNotRegistered(ctx);
       return;
     }
 

@@ -2,7 +2,7 @@ import { Markup } from "telegraf";
 import type { Telegraf, Context } from "telegraf";
 import type { BotDeps } from "../deps";
 import type { RideRequest } from "../../types";
-import { mainMenuKeyboard, resolveLocation, statusKeyboard } from "../ui";
+import { mainMenuKeyboard, replyNotRegistered, resolveLocation, statusKeyboard } from "../ui";
 
 const MATCHED_REQUEST_EDIT_BLOCK_MESSAGE =
   "You're already matched for a ride. If you want to change anything, cancel the ride first.";
@@ -549,7 +549,7 @@ export async function startRideRequestFlow({
 
   if (!session.userId) {
     logger.info("request_flow_blocked_unregistered", { telegramId });
-    await ctx.reply("You need to /start first.", mainMenuKeyboard());
+    await replyNotRegistered(ctx);
     return;
   }
 
