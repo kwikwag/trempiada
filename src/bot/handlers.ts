@@ -18,13 +18,6 @@ import {
   parseTimeToday,
 } from "../utils";
 
-/**
- * Register all bot command handlers and message handlers.
- *
- * Architecture: each handler checks the user's session state,
- * performs the appropriate action, and transitions to the next state.
- * Non-command messages are routed based on current scene.
- */
 export function registerHandlers(
   bot: Telegraf,
   repo: Repository,
@@ -35,6 +28,82 @@ export function registerHandlers(
   geocoding: GeocodingService,
 ) {
   const waze = new WazeService();
+
+  // Persistent reply keyboard shown during active matches. Removed when ride ends.
+  const SOS_KEYBOARD = Markup.keyboard([["🚨 SOS"]]).resize();
+  const REMOVE_KEYBOARD = Markup.removeKeyboard();
+
+  // ---- Shared UI helpers ----
+
+  function mainMenuKeyboard() {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback("🚗 Offer a ride", "menu_drive"),
+        Markup.button.callback("🛑 Request a ride", "menu_ride"),
+      ],
+      [
+        Markup.button.callback("👤 Trust profile", "menu_trust"),
+        Markup.button.callback("📊 My status", "menu_status"),
+      ],
+    ]);
+  }
+
+  async function showMainMenu(ctx: Context, name: string): Promise<void> {
+    await ctx.reply(`What would you like to do, ${name}?`, mainMenuKeyboard());
+  }
+
+  async function renderTrustProfile(ctx: Context, userId: number): Promise<void> {
+    const user = repo.getUserById(userId)!;
+    const verifications = repo.getVerifications(userId);
+    const profile = formatTrustProfile(user, verifications, false);
+    const verifiedTypes = new Set(verifications.map((v) => v.type));
+    const buttons = [];
+
+    if (!verifiedTypes.has("facebook"))
+      buttons.push([Markup.button.callback("Connect Facebook", "verify_facebook")]);
+    if (!verifiedTypes.has("linkedin"))
+      buttons.push([Markup.button.callback("Connect LinkedIn", "verify_linkedin")]);
+    if (!verifiedTypes.has("google"))
+      buttons.push([Markup.button.callback("Connect Google", "verify_google")]);
+    if (!verifiedTypes.has("email"))
+      buttons.push([Markup.button.callback("Add email", "verify_email")]);
+
+    for (const v of verifications) {
+      if (["facebook", "linkedin", "google", "email"].includes(v.type)) {
+        const icon = v.sharedWithRiders ? "👁" : "🙈";
+        buttons.push([
+          Markup.button.callback(
+            `${icon} ${v.type} — ${v.sharedWithRiders ? "visible to riders" : "hidden"}`,
+            `toggle_vis_${v.type}`,
+          ),
+        ]);
+      }
+    }
+
+    await ctx.reply(
+      `Your trust profile:\n\n${profile}\n\n` +
+        (buttons.length > 0 ? `Manage your verifications:` : `All verifications complete! ✅`),
+      buttons.length > 0 ? Markup.inlineKeyboard(buttons) : undefined,
+    );
+  }
+
+  async function handleSos(ctx: Context, userId: number): Promise<void> {
+    const activeMatch = repo.getActiveMatchForUser(userId);
+    await ctx.reply(
+      `📍 Your ride details have been saved.\n\n` +
+        `🚨 Emergency: call 100 (Israel Police)\n` +
+        `🚑 Ambulance: 101\n\n` +
+        `If you need to share your situation with someone you trust, ` +
+        `send them this chat right now.`,
+      Markup.inlineKeyboard([[Markup.button.callback("I'm OK, false alarm", "sos_ok")]]),
+    );
+    if (activeMatch) {
+      console.warn(
+        `SOS triggered: match=${activeMatch.id}, user=${userId}, time=${new Date().toISOString()}`,
+      );
+      // TODO(privacy/legal): persist SOS events to a dedicated `sos_events` table
+    }
+  }
 
   function rideReviewContent(telegramId: number) {
     const session = sessions.get(telegramId);
@@ -109,7 +178,10 @@ export function registerHandlers(
         );
         return null;
       } else {
-        await ctx.reply("You need to register first. Type /start to begin.");
+        await ctx.reply(
+          "You need to register first.",
+          Markup.inlineKeyboard([[Markup.button.callback("Get started 👋", "menu_start")]]),
+        );
         return null;
       }
     }
@@ -212,7 +284,6 @@ export function registerHandlers(
     const session = sessions.get(telegramId);
     if (!session.userId) return;
 
-    // Proactively notify riders that a driver is considering them
     for (const candidate of candidates) {
       const rider = repo.getUserById(candidate.request.riderId);
       if (!rider) continue;
@@ -229,7 +300,7 @@ export function registerHandlers(
     if (candidates.length === 0) {
       await ctx.reply(
         "No riders along your route right now.\n" +
-          "I'll notify you if someone matches before you depart.\n\n" +
+          "I'll notify you when someone matches before you depart.\n\n" +
           "💡 Share your invite link to get more people on TrempiadaBot:\n" +
           `t.me/TrempiadaBot?start=ref_${session.userId}`,
       );
@@ -265,11 +336,7 @@ export function registerHandlers(
       ]),
     );
 
-    sessions.updateData(telegramId, {
-      rideId,
-      candidates,
-      candidateIndex: 0,
-    });
+    sessions.updateData(telegramId, { rideId, candidates, candidateIndex: 0 });
   }
 
   async function postRideFromSession(ctx: Context, telegramId: number): Promise<void> {
@@ -305,8 +372,23 @@ export function registerHandlers(
     return prepareWazeDriveReview(ctx, telegramId, wazeUrl);
   }
 
+  async function finishRegistration(ctx: Context, telegramId: number): Promise<void> {
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    const user = repo.getUserById(session.userId)!;
+    const verifications = repo.getVerifications(session.userId);
+    const profile = formatTrustProfile(user, verifications);
+
+    await ctx.reply(`You're all set! 🎉\n\nYour trust profile:\n${profile}`);
+    await showMainMenu(ctx, user.firstName);
+
+    if (session.data.pendingWazeDriveUrl) {
+      await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
+    }
+  }
+
   // ============================================================
-  // /start — Entry point, begin registration or welcome back
+  // /start — Entry point, begin registration or show main menu
   // ============================================================
   bot.start(async (ctx) => {
     const telegramId = ctx.from!.id;
@@ -315,15 +397,11 @@ export function registerHandlers(
     if (existing) {
       sessions.setUserId(telegramId, existing.id);
       sessions.setScene(telegramId, "idle");
-      await ctx.reply(
-        `Welcome back, ${existing.firstName}! 👋\n\n` +
-          `Type /drive to offer a ride, /ride to request one, ` +
-          `or /trust to manage your verification profile.`,
-      );
+      await ctx.reply(`Welcome back, ${existing.firstName}! 👋`);
+      await showMainMenu(ctx, existing.firstName);
       return;
     }
 
-    // Start registration
     sessions.setScene(telegramId, "registration_name", {});
     await ctx.reply(
       `Hey! 👋 Welcome to TrempiadaBot.\n\n` +
@@ -334,49 +412,44 @@ export function registerHandlers(
   });
 
   // ============================================================
-  // /drive — Start offering a ride (triggers car registration if needed)
+  // /drive — Offer a ride (slash command alias)
   // ============================================================
   bot.command("drive", async (ctx) => {
     await startDrivePostingFlow(ctx, ctx.from!.id);
   });
 
   // ============================================================
-  // /ride — Request a ride
+  // /ride — Request a ride (slash command alias)
   // ============================================================
   bot.command("ride", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("You need to register first. Type /start to begin.");
+      await ctx.reply("You need to register first.", mainMenuKeyboard());
       return;
     }
 
     sessions.setScene(telegramId, "request_pickup", {});
-    await ctx.reply(`Where do you need to be picked up?\n\n` + `📍 Drop a pin or type an address.`);
+    await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
   });
 
   // ============================================================
-  // /cancel — Unified cancellation for any active ride/match
+  // /cancel — Cancel any active ride or match
   // ============================================================
   bot.command("cancel", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
-
     if (!session.userId) return;
 
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (!activeMatch) {
-      // Maybe they're cancelling during a flow
       sessions.reset(telegramId);
-      await ctx.reply("Nothing to cancel. You're all clear.");
+      await ctx.reply("Nothing to cancel. You're all clear.", mainMenuKeyboard());
       return;
     }
 
-    sessions.setScene(telegramId, "cancel_reason", {
-      matchId: activeMatch.id,
-    });
-
+    sessions.setScene(telegramId, "cancel_reason", { matchId: activeMatch.id });
     await ctx.reply(
       `Cancelling your ride. What happened?`,
       Markup.inlineKeyboard([
@@ -396,44 +469,11 @@ export function registerHandlers(
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("Register first with /start.");
+      await ctx.reply("Register first.", mainMenuKeyboard());
       return;
     }
 
-    const user = repo.getUserById(session.userId)!;
-    const verifications = repo.getVerifications(session.userId);
-    const profile = formatTrustProfile(user, verifications, false);
-
-    const verifiedTypes = new Set(verifications.map((v) => v.type));
-    const buttons = [];
-
-    if (!verifiedTypes.has("facebook"))
-      buttons.push([Markup.button.callback("Connect Facebook", "verify_facebook")]);
-    if (!verifiedTypes.has("linkedin"))
-      buttons.push([Markup.button.callback("Connect LinkedIn", "verify_linkedin")]);
-    if (!verifiedTypes.has("google"))
-      buttons.push([Markup.button.callback("Connect Google", "verify_google")]);
-    if (!verifiedTypes.has("email"))
-      buttons.push([Markup.button.callback("Add email", "verify_email")]);
-
-    // Visibility toggles for existing verifications
-    for (const v of verifications) {
-      if (["facebook", "linkedin", "google", "email"].includes(v.type)) {
-        const icon = v.sharedWithRiders ? "👁" : "🙈";
-        buttons.push([
-          Markup.button.callback(
-            `${icon} ${v.type} — ${v.sharedWithRiders ? "visible to riders" : "hidden"}`,
-            `toggle_vis_${v.type}`,
-          ),
-        ]);
-      }
-    }
-
-    await ctx.reply(
-      `Your trust profile:\n\n${profile}\n\n` +
-        (buttons.length > 0 ? `Manage your verifications:` : `All verifications complete!`),
-      buttons.length > 0 ? Markup.inlineKeyboard(buttons) : undefined,
-    );
+    await renderTrustProfile(ctx, session.userId);
   });
 
   // ============================================================
@@ -442,60 +482,48 @@ export function registerHandlers(
   bot.command("sos", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
-
     if (!session.userId) return;
-
-    const activeMatch = repo.getActiveMatchForUser(session.userId);
-
-    await ctx.reply(
-      `📍 Your ride details have been saved.\n\n` +
-        `🚨 Emergency: call 100 (Israel Police)\n` +
-        `🚑 Ambulance: 101\n\n` +
-        `If you need to share your situation with someone you trust, ` +
-        `send them this chat right now.`,
-      Markup.inlineKeyboard([[Markup.button.callback("I'm OK, false alarm", "sos_ok")]]),
-    );
-
-    // Log the SOS event — do NOT notify the other party
-    if (activeMatch) {
-      console.warn(
-        `SOS triggered: match=${activeMatch.id}, user=${session.userId}, time=${new Date().toISOString()}`,
-      );
-      // TODO(privacy/legal): persist SOS events to a dedicated `sos_events` table
-      // (user_id, match_id, triggered_at). Required for audit trail under Israeli
-      // Privacy Protection Law and for dispute escalation. See privacy backlog #1.
-    }
+    await handleSos(ctx, session.userId);
   });
 
   // ============================================================
-  // /status — Check current ride status and points
+  // /status — Points balance and active ride
   // ============================================================
   bot.command("status", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("Register first with /start.");
+      await ctx.reply("Register first.", mainMenuKeyboard());
       return;
     }
 
-    const user = repo.getUserById(session.userId)!;
-    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    await showStatus(ctx, telegramId, session.userId);
+  });
+
+  async function showStatus(ctx: Context, _telegramId: number, userId: number): Promise<void> {
+    const user = repo.getUserById(userId)!;
+    const activeMatch = repo.getActiveMatchForUser(userId);
 
     let statusText = `💰 Points: ${user.pointsBalance.toFixed(1)}\n`;
 
     if (activeMatch) {
-      statusText += `\n🚗 Active ride (${activeMatch.status})\n`;
-      statusText += `Match #${activeMatch.id}`;
+      statusText += `\n🚗 Active ride (${activeMatch.status})\nMatch #${activeMatch.id}`;
+      await ctx.reply(
+        statusText,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("🚨 SOS", "sos_button")],
+          [Markup.button.callback("Cancel ride", "cancel_from_status")],
+        ]),
+      );
     } else {
       statusText += `\nNo active ride right now.`;
+      await ctx.reply(statusText, mainMenuKeyboard());
     }
-
-    await ctx.reply(statusText);
-  });
+  }
 
   // ============================================================
-  // /delete — Request account deletion (GDPR / Privacy Law right to erasure)
+  // /delete — Account deletion
   // ============================================================
   bot.command("delete", async (ctx) => {
     const telegramId = ctx.from!.id;
@@ -509,7 +537,8 @@ export function registerHandlers(
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (activeMatch) {
       await ctx.reply(
-        "You have an active ride right now. Please /cancel it before deleting your account.",
+        "You have an active ride. Please cancel it before deleting your account.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel ride", "cancel_from_status")]]),
       );
       return;
     }
@@ -528,19 +557,116 @@ export function registerHandlers(
     );
   });
 
-  bot.action("delete_confirm", async (ctx) => {
+  // ============================================================
+  // Main menu callback handlers
+  // ============================================================
+
+  bot.action("menu_drive", async (ctx) => {
+    await ctx.answerCbQuery();
+    await startDrivePostingFlow(ctx, ctx.from!.id);
+  });
+
+  bot.action("menu_ride", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
 
+    if (!session.userId) {
+      await ctx.reply("You need to register first.");
+      return;
+    }
+
+    sessions.setScene(telegramId, "request_pickup", {});
+    await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
+  });
+
+  bot.action("menu_trust", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    await renderTrustProfile(ctx, session.userId);
+  });
+
+  bot.action("menu_status", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    await showStatus(ctx, telegramId, session.userId);
+  });
+
+  bot.action("menu_start", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    sessions.setScene(telegramId, "registration_name", {});
+    await ctx.reply("What's your first name? (This is what others will see.)");
+  });
+
+  // Driver sees "Review riders" button in a notification and taps it
+  bot.action("review_riders", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
     if (!session.userId) return;
 
-    // Re-check no active match (race condition guard)
+    const activeRide = repo.getActiveRideForDriver(session.userId);
+    if (!activeRide) {
+      await startDrivePostingFlow(ctx, telegramId);
+      return;
+    }
+
+    const candidates = await matching.findRidersForDriver(activeRide);
+    await showDriverCandidates(ctx, telegramId, activeRide.id, candidates);
+  });
+
+  // SOS via inline button (from /status or similar)
+  bot.action("sos_button", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    await handleSos(ctx, session.userId);
+  });
+
+  // Cancel shortcut from status screen
+  bot.action("cancel_from_status", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    if (!activeMatch) {
+      await ctx.editMessageText("Nothing to cancel. You're all clear.");
+      return;
+    }
+
+    sessions.setScene(telegramId, "cancel_reason", { matchId: activeMatch.id });
+    await ctx.reply(
+      `Cancelling your ride. What happened?`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Changed plans", "cancel_changed_plans")],
+        [Markup.button.callback("Other party didn't show", "cancel_no_show")],
+        [Markup.button.callback("Felt unsafe", "cancel_felt_unsafe")],
+        [Markup.button.callback("Other reason", "cancel_other")],
+      ]),
+    );
+  });
+
+  // ============================================================
+  // Callback query handlers
+  // ============================================================
+
+  bot.action("delete_confirm", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (activeMatch) {
-      await ctx.editMessageText(
-        "You have an active ride. Please /cancel it before deleting your account.",
-      );
+      await ctx.editMessageText("You have an active ride. Please cancel it first.");
       return;
     }
 
@@ -558,10 +684,6 @@ export function registerHandlers(
     await ctx.editMessageText("Account deletion cancelled. You're still with us! 👋");
   });
 
-  // ============================================================
-  // Callback query handlers (inline button presses)
-  // ============================================================
-
   // --- Cancellation reasons ---
   for (const reason of ["changed_plans", "no_show", "felt_unsafe", "other"] as const) {
     bot.action(`cancel_${reason}`, async (ctx) => {
@@ -569,7 +691,6 @@ export function registerHandlers(
       const telegramId = ctx.from!.id;
       const session = sessions.get(telegramId);
       const matchId = session.data.matchId;
-
       if (!matchId || !session.userId) return;
 
       const match = repo.getMatchById(matchId);
@@ -577,41 +698,43 @@ export function registerHandlers(
 
       repo.cancelMatch(matchId, session.userId, reason);
 
-      // Determine the other party
       const otherUserId = match.driverId === session.userId ? match.riderId : match.driverId;
       const otherUser = repo.getUserById(otherUserId);
 
-      // Handle no-show compensation
+      let cancelMsg = `Ride cancelled.`;
       if (reason === "no_show") {
         repo.adjustPoints(session.userId, POINTS.NO_SHOW_COMPENSATION);
-        await ctx.reply(
-          `Ride cancelled (no-show). You've been awarded ${POINTS.NO_SHOW_COMPENSATION} point for your time.`,
-        );
+        cancelMsg = `Ride cancelled (no-show). You've been awarded ${POINTS.NO_SHOW_COMPENSATION} point for your time.`;
       } else if (reason === "felt_unsafe") {
-        await ctx.reply(
-          `Ride cancelled. This has been logged for review. ` + `No penalty applied to you.`,
-        );
-      } else {
-        await ctx.reply(`Ride cancelled.`);
+        cancelMsg = `Ride cancelled. This has been logged for review. No penalty applied to you.`;
       }
 
-      // Notify other party (we'd need their telegram_id to send a message)
-      // This requires the bot instance to send a message to a specific chat
+      // Remove SOS keyboard and show cancellation message
+      await ctx.reply(cancelMsg, REMOVE_KEYBOARD);
+      sessions.reset(telegramId);
+
+      const user = repo.getUserById(session.userId);
+      if (user) await showMainMenu(ctx, user.firstName);
+
       if (otherUser) {
         try {
           await ctx.telegram.sendMessage(
             otherUser.telegramId,
             `⚠️ Your ride has been cancelled by the other party.\n` +
               (reason === "no_show"
-                ? `Reason: they reported you didn't show up.\nIf this was a mistake, type /dispute.`
+                ? `Reason: they reported you didn't show up.\nIf this was a mistake, contact support.`
                 : ``),
+            { reply_markup: { remove_keyboard: true } },
+          );
+          await ctx.telegram.sendMessage(
+            otherUser.telegramId,
+            `What would you like to do next?`,
+            mainMenuKeyboard() as any,
           );
         } catch (err) {
           console.error("Failed to notify other party:", err);
         }
       }
-
-      sessions.reset(telegramId);
     });
   }
 
@@ -630,9 +753,9 @@ export function registerHandlers(
     repo.setVerificationVisibility(session.userId, type, !v.sharedWithRiders);
     const newState = !v.sharedWithRiders ? "visible to riders" : "hidden from riders";
 
-    await ctx.editMessageText(
-      `${type} verification is now ${newState}.\n\nType /trust to see your full profile.`,
-    );
+    await ctx.answerCbQuery(`${type} is now ${newState}`);
+    // Re-render the full trust profile as a new message
+    await renderTrustProfile(ctx, session.userId);
   });
 
   // ============================================================
@@ -641,6 +764,12 @@ export function registerHandlers(
   bot.on("message", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
+
+    // --- SOS reply keyboard tap ---
+    if ("text" in ctx.message && ctx.message.text === "🚨 SOS") {
+      if (session.userId) await handleSos(ctx, session.userId);
+      return;
+    }
 
     // --- Message relay during active ride ---
     if (session.scene === "in_ride_relay" && session.userId) {
@@ -696,12 +825,11 @@ export function registerHandlers(
       return;
     }
 
-    // --- Registration: photo ---
+    // --- Registration: photo (fallback if no Telegram profile photo) ---
     if (session.scene === "registration_photo" && "photo" in ctx.message) {
       const photos = ctx.message.photo;
       const largest = photos[photos.length - 1];
 
-      // Create the user
       const user = repo.createUser(telegramId, session.data.firstName);
       repo.updateUserProfile(user.id, {
         gender: session.data.gender,
@@ -709,26 +837,13 @@ export function registerHandlers(
         phone: ctx.from?.id ? String(ctx.from.id) : undefined,
       });
 
-      // Add phone + photo verifications
       repo.addVerification(user.id, "phone");
       repo.addVerification(user.id, "photo");
 
       sessions.setUserId(telegramId, user.id);
       sessions.setScene(telegramId, "idle");
 
-      const verifications = repo.getVerifications(user.id);
-      const profile = formatTrustProfile(user, verifications);
-
-      await ctx.reply(
-        `You're all set! 🎉\n\n` +
-          `Your trust profile:\n${profile}\n\n` +
-          `Type /drive to offer a ride, /ride to request one, ` +
-          `or /trust to boost your verification.`,
-      );
-
-      if (session.data.pendingWazeDriveUrl) {
-        await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
-      }
+      await finishRegistration(ctx, telegramId);
       return;
     }
 
@@ -755,10 +870,7 @@ export function registerHandlers(
         return;
       }
 
-      sessions.updateData(telegramId, {
-        carDetails,
-        carPhotoFileId: largest.file_id,
-      });
+      sessions.updateData(telegramId, { carDetails, carPhotoFileId: largest.file_id });
       sessions.setScene(telegramId, "car_registration_confirm");
 
       await ctx.reply(
@@ -802,11 +914,7 @@ export function registerHandlers(
         return;
       }
 
-      sessions.updateData(telegramId, {
-        originLat: lat,
-        originLng: lng,
-        originLabel: label,
-      });
+      sessions.updateData(telegramId, { originLat: lat, originLng: lng, originLabel: label });
       sessions.setScene(telegramId, "ride_destination");
       await ctx.reply("Got it. And your destination? (drop a pin or type an address)");
       return;
@@ -835,7 +943,6 @@ export function registerHandlers(
         return;
       }
 
-      // Calculate route
       const routeResult = await routing.getRoute(
         { lat: session.data.originLat, lng: session.data.originLng },
         { lat, lng },
@@ -893,14 +1000,12 @@ export function registerHandlers(
           return;
         }
 
-        // Track failed attempts
         const attempts = (session.data.codeAttempts || 0) + 1;
         sessions.updateData(telegramId, { codeAttempts: attempts });
 
         if (attempts >= DEFAULTS.CONFIRMATION_MAX_ATTEMPTS) {
           await ctx.reply(
-            "Too many incorrect attempts. Please confirm with your rider " +
-              "that you've found the right person.",
+            "Too many incorrect attempts. Please confirm with your rider that you've found the right person.",
           );
           return;
         }
@@ -1042,13 +1147,7 @@ export function registerHandlers(
       return;
     }
 
-    // --- Rating ---
-    if (session.scene === "rating" && "text" in ctx.message) {
-      // Handled by callback queries for the star buttons
-      return;
-    }
-
-    // --- Ride review editing ---
+    // --- Ride review: seat count editing ---
     if (session.scene === "ride_edit" && "text" in ctx.message) {
       if (session.data.editField !== "seats") return;
 
@@ -1072,6 +1171,34 @@ export function registerHandlers(
       await ctx.answerCbQuery();
       const telegramId = ctx.from!.id;
       sessions.updateData(telegramId, { gender: g });
+
+      // Try to use their existing Telegram profile photo — avoids asking for a selfie
+      try {
+        const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
+        if (profilePhotos.total_count > 0) {
+          const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
+          const firstName = sessions.get(telegramId).data.firstName;
+
+          const user = repo.createUser(telegramId, firstName);
+          repo.updateUserProfile(user.id, {
+            gender: g,
+            photoFileId: largest.file_id,
+            phone: String(telegramId),
+          });
+          repo.addVerification(user.id, "phone");
+          repo.addVerification(user.id, "photo");
+
+          sessions.setUserId(telegramId, user.id);
+          sessions.setScene(telegramId, "idle");
+
+          await ctx.editMessageText(`Got it! 👍`);
+          await finishRegistration(ctx, telegramId);
+          return;
+        }
+      } catch {
+        // Fall through to manual photo upload
+      }
+
       sessions.setScene(telegramId, "registration_photo");
       await ctx.editMessageText(
         `Got it.\n\nNow, send me a photo of yourself. ` +
@@ -1102,16 +1229,15 @@ export function registerHandlers(
 
     repo.addVerification(session.userId, "car");
 
+    await ctx.editMessageText(`Car registered! ✅\n\n` + formatCarInfo(car));
+
     if (session.data.pendingWazeDriveUrl) {
-      await ctx.editMessageText(`Car registered! ✅\n\n` + formatCarInfo(car));
       await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
       return;
     }
 
-    await ctx.editMessageText(
-      `Car registered! ✅\n\n` + formatCarInfo(car) + `\n\n` + `Type /drive again to offer a ride.`,
-    );
-    sessions.reset(telegramId);
+    // Auto-continue into the drive posting flow
+    await startDrivePostingFlow(ctx, telegramId);
   });
 
   bot.action("car_confirm_retry", async (ctx) => {
@@ -1163,9 +1289,7 @@ export function registerHandlers(
       const telegramId = ctx.from!.id;
 
       const departure = new Date(Date.now() + minutes * 60 * 1000);
-      sessions.updateData(telegramId, {
-        departureTime: departure.toISOString(),
-      });
+      sessions.updateData(telegramId, { departureTime: departure.toISOString() });
       sessions.setScene(telegramId, "ride_review");
 
       const review = rideReviewContent(telegramId);
@@ -1173,7 +1297,6 @@ export function registerHandlers(
     });
   }
 
-  // --- Custom departure time ---
   bot.action("depart_custom", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
@@ -1296,7 +1419,6 @@ export function registerHandlers(
         return;
       }
 
-      // Notify all matching drivers
       let notified = 0;
       for (const c of candidates) {
         const driver = repo.getUserById(c.ride.driverId);
@@ -1306,8 +1428,10 @@ export function registerHandlers(
             driver.telegramId,
             `🆕 New rider on your route!\n\n` +
               `📍 Pickup: ${request.pickupLabel}\n` +
-              `📍 Dropoff: ${request.dropoffLabel}\n\n` +
-              `Type /drive to review and accept riders.`,
+              `📍 Dropoff: ${request.dropoffLabel}`,
+            Markup.inlineKeyboard([
+              [Markup.button.callback("Review riders →", "review_riders")],
+            ]) as any,
           );
           notified++;
         } catch {
@@ -1358,15 +1482,14 @@ export function registerHandlers(
     const rider = repo.getUserById(candidate.request.riderId);
     if (!rider) return;
 
-    // Put driver in relay mode (code entry expected)
     sessions.setScene(telegramId, "in_ride_relay");
     sessions.updateData(telegramId, { matchId: match.id, codeAttempts: 0 });
 
-    // Put rider in relay mode and send their confirmation code
     sessions.setUserId(rider.telegramId, rider.id);
     sessions.setScene(rider.telegramId, "in_ride_relay");
     sessions.updateData(rider.telegramId, { matchId: match.id });
 
+    // Notify rider with their code and the SOS keyboard
     try {
       await ctx.telegram.sendMessage(
         rider.telegramId,
@@ -1374,8 +1497,9 @@ export function registerHandlers(
           `📍 Pickup: ${candidate.request.pickupLabel}\n` +
           `📍 Dropoff: ${candidate.request.dropoffLabel}\n\n` +
           `Your confirmation code: *${code}*\n` +
-          `Show this to the driver when they arrive to confirm your identity.`,
-        { parse_mode: "Markdown" },
+          `Show this to the driver when they arrive to confirm your identity.\n\n` +
+          `You can send messages to your driver through this chat.`,
+        { parse_mode: "Markdown", ...SOS_KEYBOARD },
       );
     } catch (err) {
       console.error("Failed to notify rider:", err);
@@ -1384,8 +1508,11 @@ export function registerHandlers(
     await ctx.editMessageText(
       `✅ Matched with ${rider.firstName}!\n\n` +
         `📍 Pick up: ${candidate.request.pickupLabel}\n\n` +
-        `Head to the pickup point. When you meet the rider, ask for their 4-digit code and enter it here.`,
+        `Head to the pickup point. When you meet the rider, ask for their ${DEFAULTS.CONFIRMATION_CODE_LENGTH}-digit code and enter it here.\n\n` +
+        `You can also send messages to ${rider.firstName} through this chat.`,
     );
+    // Show SOS keyboard to driver
+    await ctx.reply(`🚨 Tap SOS below if you ever feel unsafe during the ride.`, SOS_KEYBOARD);
   });
 
   // --- Skip rider ---
@@ -1456,19 +1583,27 @@ export function registerHandlers(
 
     sessions.setScene(telegramId, "rating");
     sessions.updateData(telegramId, { matchId });
-    await ctx.editMessageText(
-      `Ride complete! 🎉\n\nHow was ${rider?.firstName}? Rate your rider:`,
-      ratingKeyboard,
-    );
+
+    await ctx.editMessageText(`Ride complete! 🎉`);
+    // Remove SOS keyboard, then show rating prompt
+    await ctx.reply(`How was ${rider?.firstName}? Rate your rider:`, {
+      ...ratingKeyboard,
+      reply_markup: { remove_keyboard: true },
+    });
+    await ctx.reply(`How was ${rider?.firstName}? Rate your rider:`, ratingKeyboard);
 
     if (rider) {
       sessions.setScene(rider.telegramId, "rating");
       sessions.updateData(rider.telegramId, { matchId });
       try {
+        // Remove SOS keyboard for rider
+        await ctx.telegram.sendMessage(rider.telegramId, `You've arrived! 🎉`, {
+          reply_markup: { remove_keyboard: true },
+        });
         await ctx.telegram.sendMessage(
           rider.telegramId,
-          `You've arrived! 🎉\n\nHow was your ride with ${driver?.firstName}?`,
-          ratingKeyboard,
+          `How was your ride with ${driver?.firstName}?`,
+          ratingKeyboard as any,
         );
       } catch (err) {
         console.error("Failed to send rider rating prompt:", err);
@@ -1489,35 +1624,26 @@ export function registerHandlers(
       if (!match) return;
 
       const ratedId = match.driverId === session.userId ? match.riderId : match.driverId;
-
       repo.addRating(match.id, session.userId, ratedId, score, null);
 
-      // Check if both parties have rated
       if (repo.bothRated(match.id)) {
-        // Award points
         const ratings = repo.getRatingsForMatch(match.id);
         const driverRating = ratings.find((r) => r.ratedId === match.driverId);
         const riderRating = ratings.find((r) => r.ratedId === match.riderId);
 
-        // Points for driver
         if (driverRating) {
-          const driverPoints =
+          const pts =
             driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
-          repo.adjustPoints(match.driverId, driverPoints);
+          repo.adjustPoints(match.driverId, pts);
         }
-
-        // Points for rider
         if (riderRating) {
-          const riderPoints =
-            riderRating.score >= 4 ? POINTS.RIDER_REWARD_HIGH : POINTS.RIDER_REWARD_LOW;
-          repo.adjustPoints(match.riderId, riderPoints);
+          const pts = riderRating.score >= 4 ? POINTS.RIDER_REWARD_HIGH : POINTS.RIDER_REWARD_LOW;
+          repo.adjustPoints(match.riderId, pts);
         }
 
-        // Increment ride counts
         repo.incrementRideCount(match.driverId, "driver");
         repo.incrementRideCount(match.riderId, "rider");
 
-        // Notify both with the other's rating
         const driver = repo.getUserById(match.driverId);
         const rider = repo.getUserById(match.riderId);
 
@@ -1529,6 +1655,11 @@ export function registerHandlers(
               driver.telegramId,
               `Thanks! ${rider?.firstName} rated you ⭐${driverRating.score}.\n` +
                 `You earned ${pts} points. Balance: ${repo.getPointsBalance(driver.id).toFixed(1)} pts.`,
+            );
+            await ctx.telegram.sendMessage(
+              driver.telegramId,
+              `What would you like to do next?`,
+              mainMenuKeyboard() as any,
             );
           } catch {
             // Notification failures should not block rating completion.
@@ -1542,6 +1673,11 @@ export function registerHandlers(
               rider.telegramId,
               `Thanks! ${driver?.firstName} rated you ⭐${riderRating.score}.\n` +
                 `You earned ${pts} points. Balance: ${repo.getPointsBalance(rider.id).toFixed(1)} pts.`,
+            );
+            await ctx.telegram.sendMessage(
+              rider.telegramId,
+              `What would you like to do next?`,
+              mainMenuKeyboard() as any,
             );
           } catch {
             // Notification failures should not block rating completion.
@@ -1561,8 +1697,14 @@ export function registerHandlers(
   // --- Cancel ride posting flow ---
   bot.action("cancel_ride_flow", async (ctx) => {
     await ctx.answerCbQuery();
-    sessions.reset(ctx.from!.id);
+    const telegramId = ctx.from!.id;
+    sessions.reset(telegramId);
     await ctx.editMessageText("Ride posting cancelled.");
+    const session = sessions.get(telegramId);
+    if (session.userId) {
+      const user = repo.getUserById(session.userId);
+      if (user) await showMainMenu(ctx, user.firstName);
+    }
   });
 
   // --- SOS false alarm ---
@@ -1570,4 +1712,19 @@ export function registerHandlers(
     await ctx.answerCbQuery();
     await ctx.editMessageText("Glad you're safe. Ride continues as normal.");
   });
+
+  // ============================================================
+  // Register bot command list in Telegram UI
+  // ============================================================
+  bot.telegram
+    .setMyCommands([
+      { command: "drive", description: "Offer a ride" },
+      { command: "ride", description: "Request a ride" },
+      { command: "status", description: "My status and points" },
+      { command: "trust", description: "Manage identity verifications" },
+      { command: "cancel", description: "Cancel your current ride" },
+      { command: "sos", description: "🚨 Emergency — call for help" },
+      { command: "delete", description: "Delete my account" },
+    ])
+    .catch((err) => console.error("Failed to set bot commands:", err));
 }

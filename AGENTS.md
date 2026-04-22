@@ -60,17 +60,6 @@ DATABASE_PATH=       # Default: ./data/rides.db
 OSRM_URL=            # Default: http://localhost:5000
 ```
 
-## TODO (priority order)
-
-1. Geocoding service (text addresses → coordinates via Nominatim)
-2. OAuth flows for social verification (Facebook, LinkedIn, Google)
-3. Waze link parsing for route import
-4. "Share ride" lightweight web page for safety
-5. Hebrew localization (all bot strings)
-6. Admin dashboard for dispute resolution
-7. Ride expiry/cleanup (expire open rides past departure time)
-8. Multiple passengers per ride (currently matches one rider at a time)
-
 ## Conventions
 
 - All DB column names use snake_case; TypeScript properties use camelCase
@@ -79,6 +68,37 @@ OSRM_URL=            # Default: http://localhost:5000
 - Telegram file IDs stored for photos (not downloaded/stored locally)
 - Points are REAL in SQLite (fractional values like 0.5)
 
+## UX Model
+
+- Primary interaction is **inline keyboard buttons**, not slash commands
+- Slash commands exist as aliases (discoverable via Telegram's `/` menu via `setMyCommands`)
+- A **main menu** (inline keyboard) is shown after: `/start`, registration, ride completion, cancellation
+- A **persistent SOS reply keyboard** is shown to both parties from match acceptance until ride end or cancellation — it is the only reply keyboard used and must be explicitly removed with `Markup.removeKeyboard()` on ride conclusion
+- `showMainMenu(ctx, name)` is the canonical way to return a user to idle state — prefer it over ad-hoc text prompts
+
+## Tests
+
+Run with `npm test` (unit) or `npm run test:all`. Uses Node's built-in test runner with `ts-node`.
+
+**Existing coverage** (`tests/unit/`): `matching`, `routing`, `geocoding`, `waze`, `car-recognition`, `license-lookup`. `tests/integration/matching` uses real in-memory SQLite + real `MatchingService`.
+
+**Missing tests** are tracked in `TODO.md` with specific function names and cases.
+
+**Rules:**
+
+- Repository tests use a real in-memory SQLite instance (call `initDatabase(db)` then `new Repository(db)`)
+- Handler tests require a mock Telegraf context — skip unless explicitly requested
+- When you add a feature that touches `repository.ts`, `utils/index.ts`, or `session.ts`, check whether a test for that method is missing and add it
+
 # Agent Notes
 
 - Also read `AGENTS.local.md` if it exists. It may contain machine-specific local setup.
+
+## End-of-Task Checklist
+
+After completing any non-trivial task, address the following before closing:
+
+1. **Type-check** — Run `npm run typecheck` and confirm it passes.
+2. **Tests** — Look at `tests/unit/` and `tests/integration/` to see what already exists. For each file you changed, ask: is the changed method/function covered? If not, write the test or add a specific entry (function name + cases) to the test backlog in `TODO.md`. Never write vague entries like "add tests for X" — name the specific functions and the cases.
+3. **Remaining work** — Any follow-up tasks, known gaps, or edge cases? Add them to `TODO.md`. All tasks live there — never in `AGENTS.md`.
+4. **AGENTS.md** — Does any new design decision, UX pattern, convention, or architectural fact need to be recorded here? Update in-place. Keep it free of task lists.

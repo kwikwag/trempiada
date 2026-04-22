@@ -476,6 +476,16 @@ export class Repository {
     return row ? this.mapRide(row) : null;
   }
 
+  getActiveRideForDriver(driverId: number): Ride | null {
+    const row = this.db
+      .prepare<
+        [number],
+        RideRow
+      >("SELECT * FROM rides WHERE driver_id = ? AND status IN ('open', 'matched') ORDER BY created_at DESC LIMIT 1")
+      .get(driverId);
+    return row ? this.mapRide(row) : null;
+  }
+
   // ---- Ride Requests ----
 
   createRideRequest(req: Omit<RideRequest, "id" | "status" | "createdAt">): RideRequest {
