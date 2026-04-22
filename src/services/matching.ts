@@ -27,11 +27,15 @@ export interface MatchCandidate {
  * 5. Rank by detour cost (less detour = better match)
  */
 export class MatchingService {
-  constructor(
-    private repo: Repository,
-    private routing: RoutingService,
-    private logger: Logger = noopLogger,
-  ) {}
+  private repo: Repository;
+  private routing: RoutingService;
+  private logger: Logger;
+
+  constructor({ repo, routing, logger = noopLogger }: MatchingServiceOptions) {
+    this.repo = repo;
+    this.routing = routing;
+    this.logger = logger;
+  }
 
   /**
    * Find matching ride requests for a newly posted driver ride.
@@ -74,14 +78,18 @@ export class MatchingService {
 
       // Rough distance check: pickup should be vaguely near the route
       // Use a generous radius since the actual detour calc is what matters
-      const pickupToOrigin = haversineKm(
-        req.pickupLat,
-        req.pickupLng,
-        ride.originLat,
-        ride.originLng,
-      );
-      const pickupToDest = haversineKm(req.pickupLat, req.pickupLng, ride.destLat, ride.destLng);
-      const routeLength = haversineKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
+      const pickupToOrigin = haversineKm({
+        from: { lat: req.pickupLat, lng: req.pickupLng },
+        to: { lat: ride.originLat, lng: ride.originLng },
+      });
+      const pickupToDest = haversineKm({
+        from: { lat: req.pickupLat, lng: req.pickupLng },
+        to: { lat: ride.destLat, lng: ride.destLng },
+      });
+      const routeLength = haversineKm({
+        from: { lat: ride.originLat, lng: ride.originLng },
+        to: { lat: ride.destLat, lng: ride.destLng },
+      });
 
       // If pickup is farther from both endpoints than the route length,
       // it's almost certainly not along the way
@@ -91,23 +99,21 @@ export class MatchingService {
       }
 
       // Minimum ride distance (anti-gaming)
-      const rideDistance = haversineKm(
-        req.pickupLat,
-        req.pickupLng,
-        req.dropoffLat,
-        req.dropoffLng,
-      );
+      const rideDistance = haversineKm({
+        from: { lat: req.pickupLat, lng: req.pickupLng },
+        to: { lat: req.dropoffLat, lng: req.dropoffLng },
+      });
       if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) {
         rejected.minDistance++;
         continue;
       }
 
       // Same-pair cooldown (anti-gaming)
-      const recentCount = this.repo.getRecentSamePairCount(
-        ride.driverId,
-        req.riderId,
-        POINTS.SAME_PAIR_COOLDOWN_HOURS,
-      );
+      const recentCount = this.repo.getRecentSamePairCount({
+        userId1: ride.driverId,
+        userId2: req.riderId,
+        hoursBack: POINTS.SAME_PAIR_COOLDOWN_HOURS,
+      });
       if (recentCount > 0) {
         rejected.samePairCooldown++;
         continue;
@@ -117,7 +123,12 @@ export class MatchingService {
       const pickup: GeoPoint = { lat: req.pickupLat, lng: req.pickupLng };
       const dropoff: GeoPoint = { lat: req.dropoffLat, lng: req.dropoffLng };
 
-      const detour = await this.routing.calculateDetour(driverOrigin, driverDest, pickup, dropoff);
+      const detour = await this.routing.calculateDetour({
+        driverOrigin,
+        driverDest,
+        pickup,
+        dropoff,
+      });
 
       if (!detour) {
         rejected.noRoute++;
@@ -194,36 +205,35 @@ export class MatchingService {
       }
 
       // Rough proximity check
-      const routeLength = haversineKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
-      const pickupToOrigin = haversineKm(
-        request.pickupLat,
-        request.pickupLng,
-        ride.originLat,
-        ride.originLng,
-      );
+      const routeLength = haversineKm({
+        from: { lat: ride.originLat, lng: ride.originLng },
+        to: { lat: ride.destLat, lng: ride.destLng },
+      });
+      const pickupToOrigin = haversineKm({
+        from: { lat: request.pickupLat, lng: request.pickupLng },
+        to: { lat: ride.originLat, lng: ride.originLng },
+      });
       if (pickupToOrigin > routeLength) {
         rejected.roughDistance++;
         continue;
       }
 
       // Min distance
-      const rideDistance = haversineKm(
-        request.pickupLat,
-        request.pickupLng,
-        request.dropoffLat,
-        request.dropoffLng,
-      );
+      const rideDistance = haversineKm({
+        from: { lat: request.pickupLat, lng: request.pickupLng },
+        to: { lat: request.dropoffLat, lng: request.dropoffLng },
+      });
       if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) {
         rejected.minDistance++;
         continue;
       }
 
       // Same-pair cooldown
-      const recentCount = this.repo.getRecentSamePairCount(
-        ride.driverId,
-        request.riderId,
-        POINTS.SAME_PAIR_COOLDOWN_HOURS,
-      );
+      const recentCount = this.repo.getRecentSamePairCount({
+        userId1: ride.driverId,
+        userId2: request.riderId,
+        hoursBack: POINTS.SAME_PAIR_COOLDOWN_HOURS,
+      });
       if (recentCount > 0) {
         rejected.samePairCooldown++;
         continue;
@@ -232,7 +242,12 @@ export class MatchingService {
       const driverOrigin: GeoPoint = { lat: ride.originLat, lng: ride.originLng };
       const driverDest: GeoPoint = { lat: ride.destLat, lng: ride.destLng };
 
-      const detour = await this.routing.calculateDetour(driverOrigin, driverDest, pickup, dropoff);
+      const detour = await this.routing.calculateDetour({
+        driverOrigin,
+        driverDest,
+        pickup,
+        dropoff,
+      });
       if (!detour) {
         rejected.noRoute++;
         continue;
@@ -263,7 +278,7 @@ export class MatchingService {
    * Create a match between a ride and a request.
    * Generates confirmation code and updates statuses.
    */
-  createMatch(ride: Ride, request: RideRequest, detour: DetourResult) {
+  createMatch({ ride, request, detour }: CreateMatchArgs) {
     const code = generateCode(DEFAULTS.CONFIRMATION_CODE_LENGTH);
 
     const match = this.repo.createMatch({
@@ -295,4 +310,16 @@ export class MatchingService {
 
     return match;
   }
+}
+
+export interface MatchingServiceOptions {
+  repo: Repository;
+  routing: RoutingService;
+  logger?: Logger;
+}
+
+export interface CreateMatchArgs {
+  ride: Ride;
+  request: RideRequest;
+  detour: DetourResult;
 }

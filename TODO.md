@@ -13,7 +13,7 @@
 - [x] Status and conflict-state UX: `/status` shows matched rides, open ride offers, and open ride requests with next actions; `/cancel` cancels active matches, open offers, or open requests; switching driver/rider roles requires cancelling the current open activity first.
 - [ ] `registerInRideHandlers` / cancellation flow: if multi-seat ride offers are added, cancelling one matched rider should reopen or revise the remaining offer instead of cancelling the whole ride.
 - [ ] `MatchingService.findDriversForRider` / `findRidersForDriver` — compare estimated arrival-at-pickup time against the rider's time window so an en-route driver approaching the pickup point can match; keep rejecting drivers who already passed the pickup point
-- [ ] `tests/unit/utils.test.ts` — `parseTimeToday` (valid, midnight edge, invalid), `formatDuration`, `generateCode` (length + numeric-only), `haversineDistance`
+- [ ] `tests/unit/utils.test.ts` — `parseTimeToday` (valid, midnight edge, invalid), `formatDuration`, `generateCode` (length + numeric-only)
 - [ ] `tests/integration/repository.test.ts` — CRUD for users/cars/rides/requests/matches; `anonymizeUser` (PII removed, row kept); `adjustPoints`/`getPointsBalance`
 - [x] `tests/unit/session.test.ts` — `setScene`/`updateData`/`reset` transitions; `isInRelay`
 - [ ] `tests/unit/handlers/drive-posting.test.ts` — `edit_open_ride` loads an open offer into ride review with save-mode buttons; `postRideFromSession` while editing cancels the previous open offer and creates a replacement; matched or stale posted-offer edit callbacks reply that changes require cancelling the ride first.

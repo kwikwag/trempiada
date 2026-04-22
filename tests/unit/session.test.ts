@@ -11,16 +11,24 @@ interface CapturedLog {
 
 function captureLogger(): { logger: Logger; logs: CapturedLog[] } {
   const logs: CapturedLog[] = [];
-  const push = (level: CapturedLog["level"], message: string, context?: LogContext) => {
+  const push = ({
+    level,
+    message,
+    context,
+  }: {
+    level: CapturedLog["level"];
+    message: string;
+    context?: LogContext;
+  }) => {
     logs.push({ level, message, context });
   };
   return {
     logs,
     logger: {
-      debug: (message, context) => push("debug", message, context),
-      info: (message, context) => push("info", message, context),
-      warn: (message, context) => push("warn", message, context),
-      error: (message, context) => push("error", message, context),
+      debug: (message, context) => push({ level: "debug", message, context }),
+      info: (message, context) => push({ level: "info", message, context }),
+      warn: (message, context) => push({ level: "warn", message, context }),
+      error: (message, context) => push({ level: "error", message, context }),
     },
   };
 }
@@ -45,10 +53,10 @@ test("setScene replaces data only when explicit data is provided", () => {
   const sessions = new SessionManager(logger);
 
   sessions.updateData(123, { originLat: 32.08 });
-  sessions.setScene(123, "ride_destination");
+  sessions.setScene({ telegramId: 123, scene: "ride_destination" });
   assert.deepEqual(sessions.get(123).data, { originLat: 32.08 });
 
-  sessions.setScene(123, "ride_origin", { carId: 9 });
+  sessions.setScene({ telegramId: 123, scene: "ride_origin", data: { carId: 9 } });
   assert.deepEqual(sessions.get(123).data, { carId: 9 });
 
   const sceneLogs = logs.filter((log) => log.message === "session_scene_changed");
@@ -95,7 +103,7 @@ test("reset returns to idle and preserves user binding", () => {
   const sessions = new SessionManager(logger);
 
   sessions.setUserId(123, 77);
-  sessions.setScene(123, "in_ride_relay", { matchId: 5 });
+  sessions.setScene({ telegramId: 123, scene: "in_ride_relay", data: { matchId: 5 } });
   sessions.reset(123);
 
   const session = sessions.get(123);
@@ -112,6 +120,6 @@ test("isInRelay reflects the current scene", () => {
   const sessions = new SessionManager();
 
   assert.equal(sessions.isInRelay(123), false);
-  sessions.setScene(123, "in_ride_relay");
+  sessions.setScene({ telegramId: 123, scene: "in_ride_relay" });
   assert.equal(sessions.isInRelay(123), true);
 });

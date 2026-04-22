@@ -7,11 +7,15 @@ import { withFetch, httpError } from "../helpers/fetch-mock";
 // Response builders
 // ---------------------------------------------------------------------------
 
-function nominatimResult(
+function nominatimResult({
   lat = "32.0853",
   lon = "34.7818",
   display_name = "Dizengoff Street, Tel Aviv-Yafo, Israel",
-) {
+}: {
+  lat?: string;
+  lon?: string;
+  display_name?: string;
+} = {}) {
   return { lat, lon, display_name };
 }
 
@@ -20,7 +24,7 @@ function nominatimResult(
 // ---------------------------------------------------------------------------
 
 test("geocode returns GeocodeResult on valid Nominatim response", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
 
   const result = await withFetch({ "nominatim.test": () => [nominatimResult()] }, () =>
     service.geocode("Dizengoff Street, Tel Aviv"),
@@ -33,11 +37,15 @@ test("geocode returns GeocodeResult on valid Nominatim response", async () => {
 });
 
 test("geocode truncates label to 3 parts", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
   const longName = "Street, City, District, Country, Extra";
 
   const result = await withFetch(
-    { "nominatim.test": () => [nominatimResult("32.0", "34.7", longName)] },
+    {
+      "nominatim.test": () => [
+        nominatimResult({ lat: "32.0", lon: "34.7", display_name: longName }),
+      ],
+    },
     () => service.geocode("query"),
   );
 
@@ -45,7 +53,7 @@ test("geocode truncates label to 3 parts", async () => {
 });
 
 test("geocode returns null when result array is empty", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
 
   const result = await withFetch({ "nominatim.test": () => [] }, () =>
     service.geocode("unknown place"),
@@ -55,7 +63,7 @@ test("geocode returns null when result array is empty", async () => {
 });
 
 test("geocode returns null when response fails schema validation", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
   // Each entry must have `lat`, `lon`, `display_name` — `coordinates` is not valid
   const invalid = [{ coordinates: [32.08, 34.78] }];
 
@@ -67,7 +75,7 @@ test("geocode returns null when response fails schema validation", async () => {
 });
 
 test("geocode returns null when response is not an array", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
 
   const result = await withFetch({ "nominatim.test": () => ({ error: "No results" }) }, () =>
     service.geocode("bogus"),
@@ -77,7 +85,7 @@ test("geocode returns null when response is not an array", async () => {
 });
 
 test("geocode returns null on HTTP error", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
   const saved = global.fetch;
   global.fetch = (() => Promise.resolve(httpError(503)())) as typeof global.fetch;
 
@@ -93,34 +101,34 @@ test("geocode returns null on HTTP error", async () => {
 // ---------------------------------------------------------------------------
 
 test("reverseGeocode returns label on valid Nominatim response", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
 
   const result = await withFetch({ "nominatim.test": () => nominatimResult() }, () =>
-    service.reverseGeocode(32.0853, 34.7818),
+    service.reverseGeocode({ lat: 32.0853, lng: 34.7818 }),
   );
 
   assert.equal(result, "Dizengoff Street, Tel Aviv-Yafo, Israel");
 });
 
 test("reverseGeocode returns null when response fails schema validation", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
   // `lon` is required — missing it fails the schema
   const invalid = { lat: "32.08", display_name: "Tel Aviv" };
 
   const result = await withFetch({ "nominatim.test": () => invalid }, () =>
-    service.reverseGeocode(32.08, 34.78),
+    service.reverseGeocode({ lat: 32.08, lng: 34.78 }),
   );
 
   assert.equal(result, null);
 });
 
 test("reverseGeocode returns null on HTTP error", async () => {
-  const service = new GeocodingService("http://nominatim.test");
+  const service = new GeocodingService({ baseUrl: "http://nominatim.test" });
   const saved = global.fetch;
   global.fetch = (() => Promise.resolve(httpError(404)())) as typeof global.fetch;
 
   try {
-    assert.equal(await service.reverseGeocode(0, 0), null);
+    assert.equal(await service.reverseGeocode({ lat: 0, lng: 0 }), null);
   } finally {
     global.fetch = saved;
   }

@@ -27,13 +27,13 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
 
   bot.command("ride", async (ctx) => {
     const telegramId = ctx.from!.id;
-    await startRideRequestFlow(ctx, telegramId, deps, "command");
+    await startRideRequestFlow({ ctx, telegramId, deps, source: "command" });
   });
 
   bot.action("menu_ride", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    await startRideRequestFlow(ctx, telegramId, deps, "menu");
+    await startRideRequestFlow({ ctx, telegramId, deps, source: "menu" });
   });
 
   bot.action("switch_offer_to_request", async (ctx) => {
@@ -51,7 +51,7 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
 
     sessions.reset(telegramId);
     await ctx.editMessageText("Your ride offer is cancelled. Let's set up your ride request.");
-    await startRideRequestFlow(ctx, telegramId, deps, "switch");
+    await startRideRequestFlow({ ctx, telegramId, deps, source: "switch" });
   });
 
   bot.action("edit_open_request", async (ctx) => {
@@ -62,7 +62,7 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
 
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (activeMatch) {
-      sessions.setScene(telegramId, "idle");
+      sessions.setScene({ telegramId, scene: "idle" });
       logger.info("open_request_edit_blocked_active_match", {
         telegramId,
         userId: session.userId,
@@ -74,7 +74,7 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
 
     const openRequest = repo.getOpenRideRequestForRider(session.userId);
     if (!openRequest) {
-      sessions.setScene(telegramId, "idle");
+      sessions.setScene({ telegramId, scene: "idle" });
       logger.info("open_request_edit_without_open_request", {
         telegramId,
         userId: session.userId,
@@ -89,41 +89,41 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
       requestId: openRequest.id,
     });
 
-    setRequestReviewFromRequest(telegramId, openRequest, deps);
-    await renderRequestReview(ctx, telegramId, deps, "edit");
+    setRequestReviewFromRequest({ telegramId, request: openRequest, deps });
+    await renderRequestReview(ctx, { telegramId, deps, mode: "edit" });
   });
 
   bot.action("edit_request_pickup", async (ctx) => {
     await ctx.answerCbQuery();
-    await startRequestLocationEdit(ctx, ctx.from!.id, deps, "pickup");
+    await startRequestLocationEdit({ ctx, telegramId: ctx.from!.id, deps, field: "pickup" });
   });
 
   bot.action("edit_request_dropoff", async (ctx) => {
     await ctx.answerCbQuery();
-    await startRequestLocationEdit(ctx, ctx.from!.id, deps, "dropoff");
+    await startRequestLocationEdit({ ctx, telegramId: ctx.from!.id, deps, field: "dropoff" });
   });
 
   bot.action("edit_request_time", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return;
+    if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return;
 
     sessions.updateData(telegramId, { requestEditField: "time" });
-    sessions.setScene(telegramId, "request_time");
+    sessions.setScene({ telegramId, scene: "request_time" });
     await ctx.editMessageText("When do you need a ride?", requestTimeWindowKeyboard());
   });
 
   bot.action("edit_request_back", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return;
-    deps.sessions.setScene(telegramId, "request_review");
-    await renderRequestReview(ctx, telegramId, deps, "edit");
+    if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return;
+    deps.sessions.setScene({ telegramId, scene: "request_review" });
+    await renderRequestReview(ctx, { telegramId, deps, mode: "edit" });
   });
 
   bot.action("save_request_changes", async (ctx) => {
     await ctx.answerCbQuery();
-    await saveRequestFromSession(ctx, ctx.from!.id, deps, true);
+    await saveRequestFromSession(ctx, { telegramId: ctx.from!.id, deps, isUpdate: true });
   });
 
   bot.action("cancel_request_edit", async (ctx) => {
@@ -162,7 +162,7 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
         typeof session.data.editingRequestId === "number" ? session.data.editingRequestId : null;
 
       if (editingRequestId !== null) {
-        if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return;
+        if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return;
 
         const now = new Date();
         const latest = new Date(now.getTime() + windowMinutes * 60 * 1000);
@@ -171,14 +171,14 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
           latestDeparture: latest.toISOString(),
           requestEditField: undefined,
         });
-        sessions.setScene(telegramId, "request_review");
+        sessions.setScene({ telegramId, scene: "request_review" });
         logger.info("request_time_updated", {
           telegramId,
           userId: session.userId,
           editingRequestId,
           windowMinutes,
         });
-        await renderRequestReview(ctx, telegramId, deps, "edit");
+        await renderRequestReview(ctx, { telegramId, deps, mode: "edit" });
         return;
       }
 
@@ -204,21 +204,46 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
         earliestDeparture: now.toISOString(),
         latestDeparture: latest.toISOString(),
       });
-      await saveRequestFromSession(ctx, telegramId, deps, false);
+      await saveRequestFromSession(ctx, { telegramId, deps, isUpdate: false });
     });
   }
 }
 
-async function startRequestLocationEdit(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-  field: RequestLocationField,
-): Promise<void> {
-  if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return;
+interface RequestHandlerArgs {
+  ctx: Context;
+  telegramId: number;
+  deps: BotDeps;
+}
+
+interface StartRequestLocationEditArgs extends RequestHandlerArgs {
+  field: RequestLocationField;
+}
+
+interface SetRequestReviewFromRequestArgs {
+  telegramId: number;
+  request: RideRequest;
+  deps: BotDeps;
+}
+
+interface StartRideRequestFlowArgs extends RequestHandlerArgs {
+  source?: "command" | "menu" | "switch";
+}
+
+interface FinishRequestLocationEditArgs extends StartRequestLocationEditArgs {
+  msg: any;
+  labelLength: number;
+}
+
+async function startRequestLocationEdit({
+  ctx,
+  telegramId,
+  deps,
+  field,
+}: StartRequestLocationEditArgs): Promise<void> {
+  if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return;
   const config = REQUEST_LOCATION_EDIT[field];
   deps.sessions.updateData(telegramId, { requestEditField: field });
-  deps.sessions.setScene(telegramId, config.scene);
+  deps.sessions.setScene({ telegramId, scene: config.scene });
   await ctx.editMessageText(config.prompt);
 }
 
@@ -230,25 +255,29 @@ function requestTimeWindowKeyboard() {
   ]);
 }
 
-function setRequestReviewFromRequest(
-  telegramId: number,
-  request: RideRequest,
-  deps: BotDeps,
-): void {
-  deps.sessions.setScene(telegramId, "request_review", {
-    editingRequestId: request.id,
-    pickupLat: request.pickupLat,
-    pickupLng: request.pickupLng,
-    pickupLabel: request.pickupLabel,
-    dropoffLat: request.dropoffLat,
-    dropoffLng: request.dropoffLng,
-    dropoffLabel: request.dropoffLabel,
-    earliestDeparture: request.earliestDeparture,
-    latestDeparture: request.latestDeparture,
-    originalPickupLabel: request.pickupLabel,
-    originalDropoffLabel: request.dropoffLabel,
-    originalEarliestDeparture: request.earliestDeparture,
-    originalLatestDeparture: request.latestDeparture,
+function setRequestReviewFromRequest({
+  telegramId,
+  request,
+  deps,
+}: SetRequestReviewFromRequestArgs): void {
+  deps.sessions.setScene({
+    telegramId,
+    scene: "request_review",
+    data: {
+      editingRequestId: request.id,
+      pickupLat: request.pickupLat,
+      pickupLng: request.pickupLng,
+      pickupLabel: request.pickupLabel,
+      dropoffLat: request.dropoffLat,
+      dropoffLng: request.dropoffLng,
+      dropoffLabel: request.dropoffLabel,
+      earliestDeparture: request.earliestDeparture,
+      latestDeparture: request.latestDeparture,
+      originalPickupLabel: request.pickupLabel,
+      originalDropoffLabel: request.dropoffLabel,
+      originalEarliestDeparture: request.earliestDeparture,
+      originalLatestDeparture: request.latestDeparture,
+    },
   });
 }
 
@@ -301,11 +330,9 @@ function requestReviewContent(telegramId: number, deps: BotDeps) {
 
 async function renderRequestReview(
   ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-  mode: "edit" | "reply",
+  { telegramId, deps, mode }: { telegramId: number; deps: BotDeps; mode: "edit" | "reply" },
 ): Promise<void> {
-  if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return;
+  if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return;
   const review = requestReviewContent(telegramId, deps);
   if (mode === "edit") {
     await ctx.editMessageText(review.text, review.extra);
@@ -314,11 +341,11 @@ async function renderRequestReview(
   await ctx.reply(review.text, review.extra);
 }
 
-async function ensurePostedRequestStillEditable(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-): Promise<boolean> {
+async function ensurePostedRequestStillEditable({
+  ctx,
+  telegramId,
+  deps,
+}: RequestHandlerArgs): Promise<boolean> {
   const { repo, sessions, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId || typeof session.data.editingRequestId !== "number") return true;
@@ -358,9 +385,7 @@ async function ensurePostedRequestStillEditable(
 
 async function saveRequestFromSession(
   ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-  isUpdate: boolean,
+  { telegramId, deps, isUpdate }: { telegramId: number; deps: BotDeps; isUpdate: boolean },
 ): Promise<void> {
   const { repo, sessions, logger } = deps;
   const session = sessions.get(telegramId);
@@ -474,15 +499,16 @@ async function saveRequestFromSession(
     const driver = repo.getUserById(c.ride.driverId);
     if (!driver) continue;
     try {
-      await deps.notify(
-        driver.telegramId,
-        `🆕 New rider on your route!\n\n` +
+      await deps.notify({
+        targetId: driver.telegramId,
+        text:
+          `🆕 New rider on your route!\n\n` +
           `📍 Pickup: ${request.pickupLabel}\n` +
           `📍 Dropoff: ${request.dropoffLabel}`,
-        Markup.inlineKeyboard([
+        extra: Markup.inlineKeyboard([
           [Markup.button.callback("Review riders →", "review_riders")],
         ]) as any,
-      );
+      });
       notified++;
     } catch {
       // Driver may not have started the bot
@@ -512,12 +538,12 @@ function formatRequestTime(iso: string): string {
   });
 }
 
-export async function startRideRequestFlow(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-  source: "command" | "menu" | "switch" = "command",
-): Promise<void> {
+export async function startRideRequestFlow({
+  ctx,
+  telegramId,
+  deps,
+  source = "command",
+}: StartRideRequestFlowArgs): Promise<void> {
   const { repo, sessions, logger } = deps;
   const session = sessions.get(telegramId);
 
@@ -529,7 +555,7 @@ export async function startRideRequestFlow(
 
   const activeMatch = repo.getActiveMatchForUser(session.userId);
   if (activeMatch) {
-    sessions.setScene(telegramId, "idle");
+    sessions.setScene({ telegramId, scene: "idle" });
     logger.info("request_flow_blocked_active_match", {
       telegramId,
       userId: session.userId,
@@ -544,7 +570,7 @@ export async function startRideRequestFlow(
 
   const openRide = repo.getOpenRideForDriver(session.userId);
   if (openRide) {
-    sessions.setScene(telegramId, "idle");
+    sessions.setScene({ telegramId, scene: "idle" });
     logger.info("request_flow_blocked_open_ride", {
       telegramId,
       userId: session.userId,
@@ -563,7 +589,7 @@ export async function startRideRequestFlow(
 
   const openRequest = repo.getOpenRideRequestForRider(session.userId);
   if (openRequest) {
-    sessions.setScene(telegramId, "idle");
+    sessions.setScene({ telegramId, scene: "idle" });
     logger.info("request_flow_blocked_open_request", {
       telegramId,
       userId: session.userId,
@@ -580,7 +606,7 @@ export async function startRideRequestFlow(
     return;
   }
 
-  sessions.setScene(telegramId, "request_pickup", {});
+  sessions.setScene({ telegramId, scene: "request_pickup", data: {} });
   logger.info("request_flow_started", {
     telegramId,
     userId: session.userId,
@@ -597,7 +623,7 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
 
   // --- Ride request: pickup location ---
   if (session.scene === "request_pickup") {
-    if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return true;
+    if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return true;
 
     const loc = await resolveLocation(msg, geocoding);
     if (!loc) {
@@ -618,18 +644,18 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
     });
 
     if (
-      await finishRequestLocationEditIfNeeded(
+      await finishRequestLocationEditIfNeeded({
         ctx,
         telegramId,
         deps,
-        "pickup",
+        field: "pickup",
         msg,
-        loc.label.length,
-      )
+        labelLength: loc.label.length,
+      })
     )
       return true;
 
-    sessions.setScene(telegramId, "request_dropoff");
+    sessions.setScene({ telegramId, scene: "request_dropoff" });
     logger.info("request_pickup_set", {
       telegramId,
       userId: session.userId,
@@ -644,7 +670,7 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
 
   // --- Ride request: dropoff location ---
   if (session.scene === "request_dropoff") {
-    if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return true;
+    if (!(await ensurePostedRequestStillEditable({ ctx, telegramId, deps }))) return true;
 
     const loc = await resolveLocation(msg, geocoding);
     if (!loc) {
@@ -665,18 +691,18 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
     });
 
     if (
-      await finishRequestLocationEditIfNeeded(
+      await finishRequestLocationEditIfNeeded({
         ctx,
         telegramId,
         deps,
-        "dropoff",
+        field: "dropoff",
         msg,
-        loc.label.length,
-      )
+        labelLength: loc.label.length,
+      })
     )
       return true;
 
-    sessions.setScene(telegramId, "request_time");
+    sessions.setScene({ telegramId, scene: "request_time" });
     logger.info("request_dropoff_set", {
       telegramId,
       userId: session.userId,
@@ -693,20 +719,20 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
   return false;
 }
 
-async function finishRequestLocationEditIfNeeded(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-  field: RequestLocationField,
-  msg: any,
-  labelLength: number,
-): Promise<boolean> {
+async function finishRequestLocationEditIfNeeded({
+  ctx,
+  telegramId,
+  deps,
+  field,
+  msg,
+  labelLength,
+}: FinishRequestLocationEditArgs): Promise<boolean> {
   const { sessions, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.data.editingRequestId || session.data.requestEditField !== field) return false;
 
   sessions.updateData(telegramId, { requestEditField: undefined });
-  sessions.setScene(telegramId, "request_review");
+  sessions.setScene({ telegramId, scene: "request_review" });
   logger.info(REQUEST_LOCATION_EDIT[field].logMessage, {
     telegramId,
     userId: session.userId,
@@ -714,6 +740,6 @@ async function finishRequestLocationEditIfNeeded(
     source: "location" in msg ? "pin" : "text",
     labelLength,
   });
-  await renderRequestReview(ctx, telegramId, deps, "reply");
+  await renderRequestReview(ctx, { telegramId, deps, mode: "reply" });
   return true;
 }

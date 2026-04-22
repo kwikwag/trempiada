@@ -6,6 +6,7 @@ import type { RoutingService } from "../services/routing";
 import type { CarRecognitionService } from "../services/car-recognition";
 import type { GeocodingService } from "../services/geocoding";
 import type { BotDeps } from "./deps";
+import type { NotifyArgs } from "./deps";
 import type { DevRepository } from "../db/dev-repository";
 import { DevService, registerDevHandlers } from "./dev";
 import { registerRegistrationHandlers, handleRegistrationMessage } from "./handlers/registration";
@@ -29,6 +30,17 @@ export interface HandlerOptions {
   devIds?: Set<number>;
   altCount?: number;
   logger?: Logger;
+}
+
+export interface RegisterHandlersArgs {
+  bot: Telegraf;
+  repo: Repository;
+  sessions: SessionManager;
+  matching: MatchingService;
+  routing: RoutingService;
+  carRecognition: CarRecognitionService;
+  geocoding: GeocodingService;
+  options?: HandlerOptions;
 }
 
 function messageKind(message: unknown): string | undefined {
@@ -59,16 +71,16 @@ function updateMetadata(ctx: any, sessions: SessionManager): LogContext {
   };
 }
 
-export function registerHandlers(
-  bot: Telegraf,
-  repo: Repository,
-  sessions: SessionManager,
-  matching: MatchingService,
-  routing: RoutingService,
-  carRecognition: CarRecognitionService,
-  geocoding: GeocodingService,
-  options: HandlerOptions = {},
-) {
+export function registerHandlers({
+  bot,
+  repo,
+  sessions,
+  matching,
+  routing,
+  carRecognition,
+  geocoding,
+  options = {},
+}: RegisterHandlersArgs) {
   const { whitelist, dev, devIds, altCount = 2, logger = noopLogger } = options;
 
   // ---- Whitelist middleware ----
@@ -111,17 +123,17 @@ export function registerHandlers(
     if (!options.devRepo) {
       throw new Error("DevRepository is required when dev mode is enabled");
     }
-    registerDevHandlers(
+    registerDevHandlers({
       bot,
       dev,
-      devIds ?? new Set(),
+      devIds: devIds ?? new Set(),
       sessions,
-      options.devRepo,
+      devRepo: options.devRepo,
       altCount,
       routing,
       geocoding,
       whitelist,
-    );
+    });
   }
 
   // ---- Structured update logging ----
@@ -150,7 +162,7 @@ export function registerHandlers(
 
   // Use this instead of bot.telegram.sendMessage whenever the target may be an alt user.
   // In dev mode, routes the message to the real chat with a persona prefix.
-  async function notify(targetId: number, text: string, extra?: object): Promise<void> {
+  async function notify({ targetId, text, extra }: NotifyArgs): Promise<void> {
     const chatId = dev ? dev.resolveChat(targetId) : targetId;
     const prefix = dev ? dev.labelFor(targetId) : "";
     const start = Date.now();
@@ -195,12 +207,14 @@ export function registerHandlers(
 
   registerInRideHandlers(bot, deps);
 
-  registerRegistrationHandlers(
+  registerRegistrationHandlers({
     bot,
     deps,
-    (ctx, telegramId) => startDrivePostingFlow(ctx, telegramId, deps),
-    (ctx, telegramId, url) => createWazeDriveFromUrl(ctx, telegramId, url, deps),
-  );
+    startDrivePostingFlow: ({ ctx, telegramId }) =>
+      startDrivePostingFlow({ ctx, telegramId, deps }),
+    createWazeDriveFromUrl: ({ ctx, telegramId, url }) =>
+      createWazeDriveFromUrl({ ctx, telegramId, wazeUrl: url, deps }),
+  });
 
   // ---- Single message handler — routes to domain handlers in priority order ----
   bot.on("message", async (ctx) => {
@@ -209,21 +223,32 @@ export function registerHandlers(
     if (await handleRideRequestMessage(ctx, deps)) return;
 
     // finishRegistration callback for use inside handleRegistrationMessage
-    async function finishRegistration(ctx: any, telegramId: number): Promise<void> {
+    async function finishRegistration({
+      ctx,
+      telegramId,
+    }: {
+      ctx: any;
+      telegramId: number;
+    }): Promise<void> {
       const session = sessions.get(telegramId);
       if (!session.userId) return;
       const user = repo.getUserById(session.userId)!;
       const verifications = repo.getVerifications(session.userId);
-      const profile = formatTrustProfile(user, verifications);
+      const profile = formatTrustProfile({ user, verifications });
       await ctx.reply(`You're all set! 🎉\n\nYour trust profile:\n${profile}`);
       const { showMainMenu } = await import("./ui");
       await showMainMenu(ctx, user.firstName);
       if (session.data.pendingWazeDriveUrl) {
-        await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl, deps);
+        await createWazeDriveFromUrl({
+          ctx,
+          telegramId,
+          wazeUrl: session.data.pendingWazeDriveUrl,
+          deps,
+        });
       }
     }
 
-    await handleRegistrationMessage(ctx, deps, finishRegistration);
+    await handleRegistrationMessage({ ctx, deps, finishRegistrationCb: finishRegistration });
   });
 
   // ---- Register bot command list in Telegram UI ----

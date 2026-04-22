@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import type { User, TrustVerification, Car } from "../types";
+import type { User, TrustVerification, Car, GeoPoint } from "../types";
 
 /** Generate a random N-digit numeric code */
 export function generateCode(length: number = 4): string {
@@ -28,11 +28,15 @@ export function formatDuration(seconds: number): string {
 }
 
 /** Format a trust profile for display */
-export function formatTrustProfile(
-  user: User,
-  verifications: TrustVerification[],
-  forPublic: boolean = false,
-): string {
+export function formatTrustProfile({
+  user,
+  verifications,
+  forPublic = false,
+}: {
+  user: User;
+  verifications: TrustVerification[];
+  forPublic?: boolean;
+}): string {
   const lines: string[] = [];
 
   const verTypeLabels: Record<string, string> = {
@@ -75,15 +79,15 @@ export function formatCarInfo(car: Car, masked: boolean = false): string {
 export type RideChangedField = "route" | "departure" | "seats";
 
 /** Format a ride summary for review before posting. Changed fields are bolded (Markdown). */
-export function formatRideSummary(
-  originLabel: string,
-  destLabel: string,
-  durationSeconds: number | null,
-  departureTime: string,
-  seats: number,
-  maxDetour: number,
-  changedFields?: Set<RideChangedField>,
-): string {
+export function formatRideSummary({
+  originLabel,
+  destLabel,
+  durationSeconds,
+  departureTime,
+  seats,
+  maxDetour,
+  changedFields,
+}: FormatRideSummaryArgs): string {
   const duration = durationSeconds ? formatDuration(durationSeconds) : "calculating...";
   const depTime = formatDepartureTime(departureTime);
   const b = (text: string, field: RideChangedField) =>
@@ -113,16 +117,20 @@ function formatDepartureTime(iso: string): string {
 }
 
 /** Format a match notification for the rider */
-export function formatMatchForRider(
-  driver: User,
-  car: Car,
-  publicVerifications: TrustVerification[],
-  pickupLabel: string,
-  dropoffLabel: string,
-  detourSeconds: number,
-  departureTime: string,
-): string {
-  const trustProfile = formatTrustProfile(driver, publicVerifications, true);
+export function formatMatchForRider({
+  driver,
+  car,
+  publicVerifications,
+  pickupLabel,
+  dropoffLabel,
+  detourSeconds,
+  departureTime,
+}: FormatMatchForRiderArgs): string {
+  const trustProfile = formatTrustProfile({
+    user: driver,
+    verifications: publicVerifications,
+    forPublic: true,
+  });
   const carInfo = formatCarInfo(car, true); // Masked plate pre-confirmation
 
   return [
@@ -140,7 +148,9 @@ export function formatMatchForRider(
 }
 
 /** Haversine distance between two points in km */
-export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function haversineKm({ from, to }: HaversineKmArgs): number {
+  const { lat: lat1, lng: lng1 } = from;
+  const { lat: lat2, lng: lng2 } = to;
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
@@ -149,6 +159,31 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+export interface FormatRideSummaryArgs {
+  originLabel: string;
+  destLabel: string;
+  durationSeconds: number | null;
+  departureTime: string;
+  seats: number;
+  maxDetour: number;
+  changedFields?: Set<RideChangedField>;
+}
+
+export interface FormatMatchForRiderArgs {
+  driver: User;
+  car: Car;
+  publicVerifications: TrustVerification[];
+  pickupLabel: string;
+  dropoffLabel: string;
+  detourSeconds: number;
+  departureTime: string;
+}
+
+export interface HaversineKmArgs {
+  from: GeoPoint;
+  to: GeoPoint;
 }
 
 function toRad(deg: number): number {

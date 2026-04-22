@@ -30,7 +30,7 @@ function telegramFileResponse(filePath: string) {
 // ---------------------------------------------------------------------------
 
 test("analyzeCarImage returns CarDetails when Gemini responds correctly", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   const payload = geminiResponse(
     JSON.stringify({
       plateNumber: "457-11-302",
@@ -55,7 +55,7 @@ test("analyzeCarImage returns CarDetails when Gemini responds correctly", async 
 });
 
 test("analyzeCarImage returns null when Gemini signals not_a_car", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   const payload = geminiResponse(JSON.stringify({ error: "not_a_car" }));
 
   const result = await withFetch({ "generativelanguage.googleapis.com": () => payload }, () =>
@@ -66,7 +66,7 @@ test("analyzeCarImage returns null when Gemini signals not_a_car", async () => {
 });
 
 test("analyzeCarImage returns null when Gemini response has no candidates", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
 
   const result = await withFetch(
     { "generativelanguage.googleapis.com": () => ({ candidates: [] }) },
@@ -77,7 +77,7 @@ test("analyzeCarImage returns null when Gemini response has no candidates", asyn
 });
 
 test("analyzeCarImage returns null when Gemini response fails schema validation", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   // `candidates` must be an array — a string fails the schema
   const invalid = { candidates: "not-an-array" };
 
@@ -89,7 +89,7 @@ test("analyzeCarImage returns null when Gemini response fails schema validation"
 });
 
 test("analyzeCarImage returns null when Gemini candidate is missing content.parts", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   // `parts` must be an array — an object fails the schema
   const invalid = { candidates: [{ content: { parts: "not-an-array" } }] };
 
@@ -101,7 +101,7 @@ test("analyzeCarImage returns null when Gemini candidate is missing content.part
 });
 
 test("extractFromTelegramPhoto returns null when getFile response fails schema validation", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   // `ok` must be a boolean — a string fails the schema
   const invalid = { status: "ok" };
 
@@ -117,16 +117,20 @@ test("extractFromTelegramPhoto returns null when getFile response fails schema v
 // ---------------------------------------------------------------------------
 
 test("analyzeCarImage enriches details from license DB when plate matches", async () => {
-  const { dbPath, cleanup } = createTempLicenseDb(
-    TEST_PLATE_NO,
-    "Audi",
-    "Mexico",
-    "Black",
-    2021,
-    5,
-  );
+  const { dbPath, cleanup } = createTempLicenseDb({
+    plateNo: TEST_PLATE_NO,
+    make: "Audi",
+    model: "Mexico",
+    color: "Black",
+    year: 2021,
+    seats: 5,
+  });
   const lookup = new LicenseLookupService(dbPath);
-  const service = new CarRecognitionService("fake-key", "fake-token", lookup);
+  const service = new CarRecognitionService({
+    geminiApiKey: "fake-key",
+    botToken: "fake-token",
+    licenseLookup: lookup,
+  });
 
   // Gemini returns a slightly different model name; DB should win
   const payload = geminiResponse(
@@ -157,9 +161,20 @@ test("analyzeCarImage enriches details from license DB when plate matches", asyn
 });
 
 test("analyzeCarImage falls back to Gemini data when plate is not in DB", async () => {
-  const { dbPath, cleanup } = createTempLicenseDb(99999999, "Honda", "Civic", "Red", 2020, 5);
+  const { dbPath, cleanup } = createTempLicenseDb({
+    plateNo: 99999999,
+    make: "Honda",
+    model: "Civic",
+    color: "Red",
+    year: 2020,
+    seats: 5,
+  });
   const lookup = new LicenseLookupService(dbPath);
-  const service = new CarRecognitionService("fake-key", "fake-token", lookup);
+  const service = new CarRecognitionService({
+    geminiApiKey: "fake-key",
+    botToken: "fake-token",
+    licenseLookup: lookup,
+  });
 
   const payload = geminiResponse(
     JSON.stringify({
@@ -191,7 +206,7 @@ test("analyzeCarImage falls back to Gemini data when plate is not in DB", async 
 // ---------------------------------------------------------------------------
 
 test("extractFromTelegramPhoto returns null when getFile fails", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
 
   const result = await withFetch({ "api.telegram.org": () => ({ ok: false }) }, () =>
     service.extractFromTelegramPhoto("bad-file-id"),
@@ -201,7 +216,7 @@ test("extractFromTelegramPhoto returns null when getFile fails", async () => {
 });
 
 test("extractFromTelegramPhoto returns null when download fails", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   let callCount = 0;
 
   const saved = global.fetch;
@@ -224,7 +239,7 @@ test("extractFromTelegramPhoto returns null when download fails", async () => {
 });
 
 test("extractFromTelegramPhoto chains Telegram download into analyzeCarImage", async () => {
-  const service = new CarRecognitionService("fake-key", "fake-token");
+  const service = new CarRecognitionService({ geminiApiKey: "fake-key", botToken: "fake-token" });
   const jpegHeader = Buffer.from([0xff, 0xd8, ...Array(10).fill(0)]);
   const payload = geminiResponse(
     JSON.stringify({
@@ -265,22 +280,22 @@ test("extractFromTelegramPhoto chains Telegram download into analyzeCarImage", a
 // ---------------------------------------------------------------------------
 
 test("detectImageType detects JPEG by magic bytes", () => {
-  const service = new CarRecognitionService("k", "t");
+  const service = new CarRecognitionService({ geminiApiKey: "k", botToken: "t" });
   assert.equal(service.detectImageType(Buffer.from([0xff, 0xd8, 0x00])), "image/jpeg");
 });
 
 test("detectImageType detects PNG by magic bytes", () => {
-  const service = new CarRecognitionService("k", "t");
+  const service = new CarRecognitionService({ geminiApiKey: "k", botToken: "t" });
   assert.equal(service.detectImageType(Buffer.from([0x89, 0x50, 0x00])), "image/png");
 });
 
 test("detectImageType detects WebP by magic bytes", () => {
-  const service = new CarRecognitionService("k", "t");
+  const service = new CarRecognitionService({ geminiApiKey: "k", botToken: "t" });
   assert.equal(service.detectImageType(Buffer.from([0x52, 0x49, 0x00])), "image/webp");
 });
 
 test("detectImageType defaults to JPEG for unknown format", () => {
-  const service = new CarRecognitionService("k", "t");
+  const service = new CarRecognitionService({ geminiApiKey: "k", botToken: "t" });
   assert.equal(service.detectImageType(Buffer.from([0x00, 0x00, 0x00])), "image/jpeg");
 });
 
@@ -290,19 +305,31 @@ test("detectImageType defaults to JPEG for unknown format", () => {
 
 test("thinkingConfig returns thinkingBudget:0 for gemini-2 models", () => {
   for (const model of ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]) {
-    const cfg = new CarRecognitionService("k", "t", undefined, model).thinkingConfig();
+    const cfg = new CarRecognitionService({
+      geminiApiKey: "k",
+      botToken: "t",
+      model,
+    }).thinkingConfig();
     assert.deepEqual(cfg, { thinkingBudget: 0 }, `expected gemini-2 config for ${model}`);
   }
 });
 
 test("thinkingConfig returns thinkingLevel:minimal for gemini-3 models", () => {
   for (const model of ["gemini-3.1-flash-lite-preview", "gemini-3.0-flash"]) {
-    const cfg = new CarRecognitionService("k", "t", undefined, model).thinkingConfig();
+    const cfg = new CarRecognitionService({
+      geminiApiKey: "k",
+      botToken: "t",
+      model,
+    }).thinkingConfig();
     assert.deepEqual(cfg, { thinkingLevel: "minimal" }, `expected gemini-3 config for ${model}`);
   }
 });
 
 test("thinkingConfig returns empty object for unknown model families", () => {
-  const cfg = new CarRecognitionService("k", "t", undefined, "some-other-model").thinkingConfig();
+  const cfg = new CarRecognitionService({
+    geminiApiKey: "k",
+    botToken: "t",
+    model: "some-other-model",
+  }).thinkingConfig();
   assert.deepEqual(cfg, {});
 });

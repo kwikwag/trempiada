@@ -33,12 +33,11 @@ export async function showMainMenu(ctx: Context, name: string): Promise<void> {
 
 export async function renderTrustProfile(
   ctx: Context,
-  userId: number,
-  repo: Repository,
+  { userId, repo }: { userId: number; repo: Repository },
 ): Promise<void> {
   const user = repo.getUserById(userId)!;
   const verifications = repo.getVerifications(userId);
-  const profile = formatTrustProfile(user, verifications, false);
+  const profile = formatTrustProfile({ user, verifications, forPublic: false });
   const verifiedTypes = new Set(verifications.map((v) => v.type));
   const buttons = [];
 
@@ -72,9 +71,7 @@ export async function renderTrustProfile(
 
 export async function handleSos(
   ctx: Context,
-  userId: number,
-  repo: Repository,
-  logger: Logger = noopLogger,
+  { userId, repo, logger = noopLogger }: { userId: number; repo: Repository; logger?: Logger },
 ): Promise<void> {
   const activeMatch = repo.getActiveMatchForUser(userId);
   await ctx.reply(
@@ -114,15 +111,15 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
   }
 
   const hasChanges = (changedFields?.size ?? 0) > 0;
-  const summary = formatRideSummary(
-    session.data.originLabel,
-    session.data.destLabel,
-    session.data.estimatedDuration,
-    session.data.departureTime,
-    session.data.seats,
-    session.data.maxDetour,
+  const summary = formatRideSummary({
+    originLabel: session.data.originLabel,
+    destLabel: session.data.destLabel,
+    durationSeconds: session.data.estimatedDuration,
+    departureTime: session.data.departureTime,
+    seats: session.data.seats,
+    maxDetour: session.data.maxDetour,
     changedFields,
-  );
+  });
 
   return {
     text: `Here's your ride:\n\n${summary}\n\n`,
@@ -154,14 +151,16 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
 
 export async function replyWithRideReview(
   ctx: Context,
-  telegramId: number,
-  sessions: SessionManager,
+  { telegramId, sessions }: { telegramId: number; sessions: SessionManager },
 ): Promise<void> {
   const review = rideReviewContent(telegramId, sessions);
   await ctx.reply(review.text, review.extra);
 }
 
-export async function showStatus(ctx: Context, userId: number, repo: Repository): Promise<void> {
+export async function showStatus(
+  ctx: Context,
+  { userId, repo }: { userId: number; repo: Repository },
+): Promise<void> {
   const user = repo.getUserById(userId)!;
   const activeMatch = repo.getActiveMatchForUser(userId);
 
@@ -182,7 +181,7 @@ export async function showStatus(ctx: Context, userId: number, repo: Repository)
       [
         accountLine(user),
         "",
-        formatMatchStatus(activeMatch, isDriver, otherUser, ride, request),
+        formatMatchStatus({ match: activeMatch, isDriver, otherUser, ride, request }),
       ].join("\n"),
       Markup.inlineKeyboard(buttons),
     );
@@ -226,13 +225,19 @@ function accountLine(user: User): string {
   return `💰 Points: ${user.pointsBalance.toFixed(1)}`;
 }
 
-function formatMatchStatus(
-  match: Match,
-  isDriver: boolean,
-  otherUser: User | null,
-  ride: Ride | null,
-  request: RideRequest | null,
-): string {
+function formatMatchStatus({
+  match,
+  isDriver,
+  otherUser,
+  ride,
+  request,
+}: {
+  match: Match;
+  isDriver: boolean;
+  otherUser: User | null;
+  ride: Ride | null;
+  request: RideRequest | null;
+}): string {
   const role = isDriver ? "driver" : "rider";
   const otherRole = isDriver ? "rider" : "driver";
   const otherName = otherUser?.firstName ?? `your ${otherRole}`;
@@ -300,14 +305,14 @@ export function cancellationKeyboard() {
 export async function resolveLocation(
   message: any,
   geocoding: {
-    reverseGeocode: (lat: number, lng: number) => Promise<string | null>;
+    reverseGeocode: (args: { lat: number; lng: number }) => Promise<string | null>;
     geocode: (query: string) => Promise<{ lat: number; lng: number; label: string } | null>;
   },
 ): Promise<{ lat: number; lng: number; label: string } | null> {
   if ("location" in message) {
     const lat = message.location.latitude;
     const lng = message.location.longitude;
-    const resolved = await geocoding.reverseGeocode(lat, lng);
+    const resolved = await geocoding.reverseGeocode({ lat, lng });
     const label = resolved ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     return { lat, lng, label };
   }

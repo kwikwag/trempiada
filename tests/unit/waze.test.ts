@@ -33,7 +33,7 @@ test("extractWazeSdToken returns sd only for Waze /ul URLs", () => {
 });
 
 test("WazeService fetches driver info and maps it to drive info", async () => {
-  const service = new WazeService("https://waze.local/il-rtserver/web");
+  const service = new WazeService({ baseUrl: "https://waze.local/il-rtserver/web" });
   const savedFetch = global.fetch;
   const savedNow = Date.now;
   let requestedUrl = "";
@@ -70,7 +70,7 @@ test("WazeService fetches driver info and maps it to drive info", async () => {
 });
 
 test("WazeService returns null for invalid responses", async () => {
-  const service = new WazeService("https://waze.local");
+  const service = new WazeService({ baseUrl: "https://waze.local" });
   const savedFetch = global.fetch;
 
   global.fetch = (async () =>

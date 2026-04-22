@@ -22,13 +22,13 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
 
   bot.command("drive", async (ctx) => {
     logger.info("drive_command_received", { telegramId: ctx.from!.id });
-    await startDrivePostingFlow(ctx, ctx.from!.id, deps);
+    await startDrivePostingFlow({ ctx, telegramId: ctx.from!.id, deps });
   });
 
   bot.action("menu_drive", async (ctx) => {
     await ctx.answerCbQuery();
     logger.info("drive_menu_selected", { telegramId: ctx.from!.id });
-    await startDrivePostingFlow(ctx, ctx.from!.id, deps);
+    await startDrivePostingFlow({ ctx, telegramId: ctx.from!.id, deps });
   });
 
   bot.action("switch_request_to_drive", async (ctx) => {
@@ -49,10 +49,10 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await ctx.editMessageText("Your ride request is cancelled. Let's set up your ride offer.");
 
     if (typeof pendingWazeDriveUrl === "string") {
-      await createWazeDriveFromUrl(ctx, telegramId, pendingWazeDriveUrl, deps);
+      await createWazeDriveFromUrl({ ctx, telegramId, wazeUrl: pendingWazeDriveUrl, deps });
       return;
     }
-    await startDrivePostingFlow(ctx, telegramId, deps);
+    await startDrivePostingFlow({ ctx, telegramId, deps });
   });
 
   bot.action("replace_offer_with_drive", async (ctx) => {
@@ -73,16 +73,16 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await ctx.editMessageText("Your previous ride offer is cancelled. Let's set up the new one.");
 
     if (typeof pendingWazeDriveUrl === "string") {
-      await createWazeDriveFromUrl(ctx, telegramId, pendingWazeDriveUrl, deps);
+      await createWazeDriveFromUrl({ ctx, telegramId, wazeUrl: pendingWazeDriveUrl, deps });
       return;
     }
-    await startDrivePostingFlow(ctx, telegramId, deps);
+    await startDrivePostingFlow({ ctx, telegramId, deps });
   });
 
   bot.action("edit_open_ride", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    await startOpenRideEditFlow(ctx, telegramId, deps);
+    await startOpenRideEditFlow({ ctx, telegramId, deps });
   });
 
   // Driver taps "Review riders" from a notification
@@ -107,7 +107,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
         telegramId,
         userId: session.userId,
       });
-      await startDrivePostingFlow(ctx, telegramId, deps);
+      await startDrivePostingFlow({ ctx, telegramId, deps });
       return;
     }
 
@@ -119,7 +119,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
       rideId: activeRide.id,
       candidateCount: candidates.length,
     });
-    await showDriverCandidates(ctx, telegramId, activeRide.id, candidates, deps);
+    await showDriverCandidates({ ctx, telegramId, rideId: activeRide.id, candidates, deps });
   });
 
   // --- Departure time callbacks ---
@@ -131,11 +131,11 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     bot.action(action, async (ctx) => {
       await ctx.answerCbQuery();
       const telegramId = ctx.from!.id;
-      if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+      if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
 
       const departure = new Date(Date.now() + minutes * 60 * 1000);
       sessions.updateData(telegramId, { departureTime: departure.toISOString() });
-      sessions.setScene(telegramId, "ride_review");
+      sessions.setScene({ telegramId, scene: "ride_review" });
 
       const review = rideReviewContent(telegramId, sessions);
       await ctx.editMessageText(review.text, review.extra);
@@ -150,8 +150,8 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("depart_custom", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
-    sessions.setScene(telegramId, "ride_departure_custom");
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
+    sessions.setScene({ telegramId, scene: "ride_departure_custom" });
     logger.info("ride_departure_custom_requested", { telegramId });
     await ctx.editMessageText("When are you leaving?\n\nEnter a time like *18:00* or *6:30 PM*.", {
       parse_mode: "Markdown",
@@ -168,19 +168,19 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
       return;
     }
     logger.info("ride_post_requested", { telegramId });
-    await postRideFromSession(ctx, telegramId, deps);
+    await postRideFromSession({ ctx, telegramId, deps });
   });
 
   // --- Edit ride fields ---
   bot.action("edit_ride_seats", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
     const session = sessions.get(telegramId);
     const maxSeats = session.data.carSeatCount ?? session.data.seats;
 
     sessions.updateData(telegramId, { editField: "seats" });
-    sessions.setScene(telegramId, "ride_edit");
+    sessions.setScene({ telegramId, scene: "ride_edit" });
     await ctx.editMessageText(
       `How many seats are available? Enter a number from 1 to ${maxSeats}.`,
     );
@@ -189,7 +189,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("edit_ride_departure", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
 
     await ctx.editMessageText("When are you leaving?", rideDepartureKeyboard());
   });
@@ -197,9 +197,9 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("edit_ride_origin", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
     sessions.updateData(telegramId, { routeEditMode: "origin-only" });
-    sessions.setScene(telegramId, "ride_origin");
+    sessions.setScene({ telegramId, scene: "ride_origin" });
     logger.info("ride_origin_edit_requested", {
       telegramId,
       userId: sessions.get(telegramId).userId,
@@ -212,9 +212,9 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("edit_ride_dest", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
     sessions.updateData(telegramId, { routeEditMode: "dest-only" });
-    sessions.setScene(telegramId, "ride_destination");
+    sessions.setScene({ telegramId, scene: "ride_destination" });
     logger.info("ride_dest_edit_requested", {
       telegramId,
       userId: sessions.get(telegramId).userId,
@@ -252,18 +252,43 @@ function rideDepartureKeyboard() {
   ]);
 }
 
-async function startOpenRideEditFlow(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-): Promise<void> {
+interface DriveHandlerArgs {
+  ctx: Context;
+  telegramId: number;
+  deps: BotDeps;
+}
+
+interface SetRideReviewFromRideArgs {
+  telegramId: number;
+  ride: Ride;
+  deps: BotDeps;
+}
+
+interface PromptDriverVerificationArgs extends DriveHandlerArgs {
+  data: Record<string, unknown>;
+}
+
+interface EnsureDriverReadyArgs extends DriveHandlerArgs {
+  pendingData?: Record<string, unknown>;
+}
+
+interface ShowDriverCandidatesArgs extends DriveHandlerArgs {
+  rideId: number;
+  candidates: MatchCandidate[];
+}
+
+interface CreateWazeDriveFromUrlArgs extends DriveHandlerArgs {
+  wazeUrl: string;
+}
+
+async function startOpenRideEditFlow({ ctx, telegramId, deps }: DriveHandlerArgs): Promise<void> {
   const { repo, sessions, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId) return;
 
   const activeMatch = repo.getActiveMatchForUser(session.userId);
   if (activeMatch) {
-    sessions.setScene(telegramId, "idle");
+    sessions.setScene({ telegramId, scene: "idle" });
     logger.info("open_ride_edit_blocked_active_match", {
       telegramId,
       userId: session.userId,
@@ -275,7 +300,7 @@ async function startOpenRideEditFlow(
 
   const openRide = repo.getOpenRideForDriver(session.userId);
   if (!openRide) {
-    sessions.setScene(telegramId, "idle");
+    sessions.setScene({ telegramId, scene: "idle" });
     logger.info("open_ride_edit_without_open_ride", {
       telegramId,
       userId: session.userId,
@@ -284,7 +309,7 @@ async function startOpenRideEditFlow(
     return;
   }
 
-  setRideReviewFromRide(telegramId, openRide, deps);
+  setRideReviewFromRide({ telegramId, ride: openRide, deps });
   logger.info("open_ride_edit_started", {
     telegramId,
     userId: session.userId,
@@ -294,11 +319,11 @@ async function startOpenRideEditFlow(
   await ctx.editMessageText(review.text, review.extra);
 }
 
-async function ensurePostedRideStillEditable(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-): Promise<boolean> {
+async function ensurePostedRideStillEditable({
+  ctx,
+  telegramId,
+  deps,
+}: DriveHandlerArgs): Promise<boolean> {
   const { repo, sessions, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId || typeof session.data.editingRideId !== "number") return true;
@@ -347,14 +372,14 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
     const wazeUrl = extractWazeDriveUrl(msg.text);
     if (wazeUrl) {
       logger.info("waze_drive_detected", { telegramId });
-      await createWazeDriveFromUrl(ctx, telegramId, wazeUrl, deps);
+      await createWazeDriveFromUrl({ ctx, telegramId, wazeUrl, deps });
       return true;
     }
   }
 
   // --- Ride posting: origin ---
   if (session.scene === "ride_origin") {
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return true;
 
     const loc = await resolveLocation(msg, geocoding);
     if (!loc) {
@@ -390,19 +415,19 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
         estimatedDuration: routeResult?.durationSeconds || null,
         routeEditMode: undefined,
       });
-      sessions.setScene(telegramId, "ride_review");
-      await replyWithRideReview(ctx, telegramId, sessions);
+      sessions.setScene({ telegramId, scene: "ride_review" });
+      await replyWithRideReview(ctx, { telegramId, sessions });
       return true;
     }
 
-    sessions.setScene(telegramId, "ride_destination");
+    sessions.setScene({ telegramId, scene: "ride_destination" });
     await ctx.reply("Got it. And your destination? (drop a pin or type an address)");
     return true;
   }
 
   // --- Ride posting: destination ---
   if (session.scene === "ride_destination") {
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return true;
 
     if (!("location" in msg) && !("text" in msg)) return true;
 
@@ -437,12 +462,12 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
 
     if (session.data.routeEditMode === "dest-only") {
       sessions.updateData(telegramId, { routeEditMode: undefined });
-      sessions.setScene(telegramId, "ride_review");
-      await replyWithRideReview(ctx, telegramId, sessions);
+      sessions.setScene({ telegramId, scene: "ride_review" });
+      await replyWithRideReview(ctx, { telegramId, sessions });
       return true;
     }
 
-    sessions.setScene(telegramId, "ride_departure");
+    sessions.setScene({ telegramId, scene: "ride_departure" });
     await ctx.reply(
       `${session.data.originLabel} → ${loc.label}\n` +
         (routeResult ? `🕐 About ${formatDuration(routeResult.durationSeconds)}\n\n` : `\n`) +
@@ -454,7 +479,7 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
 
   // --- Custom departure time entry ---
   if (session.scene === "ride_departure_custom" && "text" in msg) {
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return true;
 
     const departure = parseTimeToday(msg.text.trim());
     if (!departure) {
@@ -464,19 +489,19 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
       return true;
     }
     sessions.updateData(telegramId, { departureTime: departure.toISOString() });
-    sessions.setScene(telegramId, "ride_review");
+    sessions.setScene({ telegramId, scene: "ride_review" });
     logger.info("ride_departure_custom_set", {
       telegramId,
       userId: session.userId,
       departureTime: departure.toISOString(),
     });
-    await replyWithRideReview(ctx, telegramId, sessions);
+    await replyWithRideReview(ctx, { telegramId, sessions });
     return true;
   }
 
   // --- Ride review: seat count editing ---
   if (session.scene === "ride_edit" && "text" in msg) {
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return true;
 
     if (session.data.editField !== "seats") return false;
 
@@ -488,69 +513,82 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
     }
 
     sessions.updateData(telegramId, { seats, editField: undefined });
-    sessions.setScene(telegramId, "ride_review");
+    sessions.setScene({ telegramId, scene: "ride_review" });
     logger.info("ride_seats_updated", {
       telegramId,
       userId: session.userId,
       seats,
     });
-    await replyWithRideReview(ctx, telegramId, sessions);
+    await replyWithRideReview(ctx, { telegramId, sessions });
     return true;
   }
 
   return false;
 }
 
-function setRideReviewFromCar(
-  telegramId: number,
-  car: Car,
-  data: Record<string, unknown>,
-  deps: BotDeps,
-): void {
+function setRideReviewFromCar({
+  telegramId,
+  car,
+  data,
+  deps,
+}: {
+  telegramId: number;
+  car: Car;
+  data: Record<string, unknown>;
+  deps: BotDeps;
+}): void {
   const { sessions } = deps;
-  sessions.setScene(telegramId, "ride_review", {
-    carId: car.id,
-    seats: car.seatCount,
-    carSeatCount: car.seatCount,
-    maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
-    ...data,
+  sessions.setScene({
+    telegramId,
+    scene: "ride_review",
+    data: {
+      carId: car.id,
+      seats: car.seatCount,
+      carSeatCount: car.seatCount,
+      maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
+      ...data,
+    },
   });
 }
 
-function setRideReviewFromRide(telegramId: number, ride: Ride, deps: BotDeps): void {
+function setRideReviewFromRide({ telegramId, ride, deps }: SetRideReviewFromRideArgs): void {
   const { repo, sessions } = deps;
   const activeCar = repo.getActiveCar(ride.driverId);
   const carSeatCount = activeCar?.id === ride.carId ? activeCar.seatCount : ride.availableSeats;
 
-  sessions.setScene(telegramId, "ride_review", {
-    editingRideId: ride.id,
-    carId: ride.carId,
-    seats: ride.availableSeats,
-    carSeatCount,
-    maxDetour: ride.maxDetourMinutes,
-    originLat: ride.originLat,
-    originLng: ride.originLng,
-    originLabel: ride.originLabel,
-    destLat: ride.destLat,
-    destLng: ride.destLng,
-    destLabel: ride.destLabel,
-    routeGeometry: ride.routeGeometry,
-    estimatedDuration: ride.estimatedDuration,
-    departureTime: ride.departureTime,
-    originalSeats: ride.availableSeats,
-    originalDepartureTime: ride.departureTime,
-    originalOriginLabel: ride.originLabel,
-    originalDestLabel: ride.destLabel,
+  sessions.setScene({
+    telegramId,
+    scene: "ride_review",
+    data: {
+      editingRideId: ride.id,
+      carId: ride.carId,
+      seats: ride.availableSeats,
+      carSeatCount,
+      maxDetour: ride.maxDetourMinutes,
+      originLat: ride.originLat,
+      originLng: ride.originLng,
+      originLabel: ride.originLabel,
+      destLat: ride.destLat,
+      destLng: ride.destLng,
+      destLabel: ride.destLabel,
+      routeGeometry: ride.routeGeometry,
+      estimatedDuration: ride.estimatedDuration,
+      departureTime: ride.departureTime,
+      originalSeats: ride.availableSeats,
+      originalDepartureTime: ride.departureTime,
+      originalOriginLabel: ride.originLabel,
+      originalDestLabel: ride.destLabel,
+    },
   });
 }
 
-async function promptDriverVerification(
-  ctx: Context,
-  telegramId: number,
-  data: Record<string, unknown>,
-  deps: BotDeps,
-): Promise<void> {
-  deps.sessions.setScene(telegramId, "registration_verification", data);
+async function promptDriverVerification({
+  ctx,
+  telegramId,
+  data,
+  deps,
+}: PromptDriverVerificationArgs): Promise<void> {
+  deps.sessions.setScene({ telegramId, scene: "registration_verification", data });
   await ctx.reply(
     "Drivers need at least one identity verification to offer rides. This helps riders feel safe.\n\n" +
       "Choose a verification method:",
@@ -563,12 +601,12 @@ async function promptDriverVerification(
   );
 }
 
-export async function ensureDriverReady(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-  pendingData: Record<string, unknown> = {},
-): Promise<Car | null> {
+export async function ensureDriverReady({
+  ctx,
+  telegramId,
+  deps,
+  pendingData = {},
+}: EnsureDriverReadyArgs): Promise<Car | null> {
   const { repo, sessions } = deps;
   const session = sessions.get(telegramId);
 
@@ -578,7 +616,7 @@ export async function ensureDriverReady(
       sessions.setUserId(telegramId, existing.id);
     } else if (pendingData.pendingWazeDriveUrl) {
       deps.logger.info("driver_flow_needs_registration", { telegramId });
-      sessions.setScene(telegramId, "registration_name", pendingData);
+      sessions.setScene({ telegramId, scene: "registration_name", data: pendingData });
       await ctx.reply(
         "I can set up that Waze drive for you. First, let's create your account.\n\n" +
           "What's your first name? (This is what others will see.)",
@@ -609,7 +647,7 @@ export async function ensureDriverReady(
 
   const activeMatch = repo.getActiveMatchForUser(readySession.userId);
   if (activeMatch) {
-    deps.sessions.setScene(telegramId, "idle");
+    deps.sessions.setScene({ telegramId, scene: "idle" });
     deps.logger.info("driver_flow_blocked_active_match", {
       telegramId,
       userId: readySession.userId,
@@ -624,7 +662,7 @@ export async function ensureDriverReady(
 
   const openRequest = repo.getOpenRideRequestForRider(readySession.userId);
   if (openRequest) {
-    deps.sessions.setScene(telegramId, "idle", pendingData);
+    deps.sessions.setScene({ telegramId, scene: "idle", data: pendingData });
     deps.logger.info("driver_flow_blocked_open_request", {
       telegramId,
       userId: readySession.userId,
@@ -642,7 +680,7 @@ export async function ensureDriverReady(
 
   const openRide = repo.getOpenRideForDriver(readySession.userId);
   if (openRide) {
-    deps.sessions.setScene(telegramId, "idle", pendingData);
+    deps.sessions.setScene({ telegramId, scene: "idle", data: pendingData });
     deps.logger.info("driver_flow_blocked_open_ride", {
       telegramId,
       userId: readySession.userId,
@@ -666,7 +704,7 @@ export async function ensureDriverReady(
       telegramId,
       userId: readySession.userId,
     });
-    sessions.setScene(telegramId, "car_registration_photo", pendingData);
+    sessions.setScene({ telegramId, scene: "car_registration_photo", data: pendingData });
     await ctx.reply(
       (pendingData.pendingWazeDriveUrl ? "I saved the Waze drive. " : "") +
         "First time driving? Let's register your car.\n\n" +
@@ -682,35 +720,39 @@ export async function ensureDriverReady(
       userId: readySession.userId,
       verificationCount: verCount,
     });
-    await promptDriverVerification(
+    await promptDriverVerification({
       ctx,
       telegramId,
-      {
+      data: {
         returnTo: pendingData.pendingWazeDriveUrl ? "waze_drive" : "ride_origin",
         ...pendingData,
       },
       deps,
-    );
+    });
     return null;
   }
 
   return car;
 }
 
-export async function startDrivePostingFlow(
-  ctx: Context,
-  telegramId: number,
-  deps: BotDeps,
-): Promise<void> {
+export async function startDrivePostingFlow({
+  ctx,
+  telegramId,
+  deps,
+}: DriveHandlerArgs): Promise<void> {
   const { sessions } = deps;
-  const car = await ensureDriverReady(ctx, telegramId, deps);
+  const car = await ensureDriverReady({ ctx, telegramId, deps });
   if (!car) return;
 
-  sessions.setScene(telegramId, "ride_origin", {
-    carId: car.id,
-    seats: car.seatCount,
-    carSeatCount: car.seatCount,
-    maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
+  sessions.setScene({
+    telegramId,
+    scene: "ride_origin",
+    data: {
+      carId: car.id,
+      seats: car.seatCount,
+      carSeatCount: car.seatCount,
+      maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
+    },
   });
   deps.logger.info("drive_flow_started", {
     telegramId,
@@ -726,13 +768,13 @@ export async function startDrivePostingFlow(
   );
 }
 
-async function showDriverCandidates(
-  ctx: Context,
-  telegramId: number,
-  rideId: number,
-  candidates: MatchCandidate[],
-  deps: BotDeps,
-): Promise<void> {
+async function showDriverCandidates({
+  ctx,
+  telegramId,
+  rideId,
+  candidates,
+  deps,
+}: ShowDriverCandidatesArgs): Promise<void> {
   const { repo, sessions, notify } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId) return;
@@ -741,10 +783,10 @@ async function showDriverCandidates(
     const rider = repo.getUserById(candidate.request.riderId);
     if (!rider) continue;
     try {
-      await notify(
-        rider.telegramId,
-        "🔔 A driver heading your way is reviewing your ride request! You'll get a confirmation if they accept.",
-      );
+      await notify({
+        targetId: rider.telegramId,
+        text: "🔔 A driver heading your way is reviewing your ride request! You'll get a confirmation if they accept.",
+      });
     } catch {
       // Rider may not have started the bot
     }
@@ -785,7 +827,7 @@ async function showDriverCandidates(
   await ctx.reply(
     `Found ${candidates.length} rider${candidates.length > 1 ? "s" : ""} along your route!\n\n` +
       `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
-      formatTrustProfile(rider, riderVerifications, true) +
+      formatTrustProfile({ user: rider, verifications: riderVerifications, forPublic: true }) +
       `\n` +
       `📍 Pickup: ${candidate.request.pickupLabel}\n` +
       `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
@@ -807,7 +849,7 @@ async function showDriverCandidates(
   });
 }
 
-async function postRideFromSession(ctx: Context, telegramId: number, deps: BotDeps): Promise<void> {
+async function postRideFromSession({ ctx, telegramId, deps }: DriveHandlerArgs): Promise<void> {
   const { repo, sessions, matching, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId) return;
@@ -905,19 +947,24 @@ async function postRideFromSession(ctx: Context, telegramId: number, deps: BotDe
   });
 
   const candidates = await matching.findRidersForDriver(ride);
-  await showDriverCandidates(ctx, telegramId, ride.id, candidates, deps);
+  await showDriverCandidates({ ctx, telegramId, rideId: ride.id, candidates, deps });
 }
 
-export async function createWazeDriveFromUrl(
-  ctx: Context,
-  telegramId: number,
-  wazeUrl: string,
-  deps: BotDeps,
-): Promise<boolean> {
+export async function createWazeDriveFromUrl({
+  ctx,
+  telegramId,
+  wazeUrl,
+  deps,
+}: CreateWazeDriveFromUrlArgs): Promise<boolean> {
   const { routing, sessions } = deps;
-  const waze = new WazeService(undefined, deps.logger);
+  const waze = new WazeService({ logger: deps.logger });
 
-  const car = await ensureDriverReady(ctx, telegramId, deps, { pendingWazeDriveUrl: wazeUrl });
+  const car = await ensureDriverReady({
+    ctx,
+    telegramId,
+    deps,
+    pendingData: { pendingWazeDriveUrl: wazeUrl },
+  });
   if (!car) return true;
 
   deps.logger.info("waze_drive_import_started", { telegramId });
@@ -937,10 +984,10 @@ export async function createWazeDriveFromUrl(
     { lat: drive.destLat, lng: drive.destLng },
   );
 
-  setRideReviewFromCar(
+  setRideReviewFromCar({
     telegramId,
     car,
-    {
+    data: {
       originLat: drive.originLat,
       originLng: drive.originLng,
       originLabel: drive.originLabel,
@@ -952,7 +999,7 @@ export async function createWazeDriveFromUrl(
       departureTime: new Date().toISOString(),
     },
     deps,
-  );
+  });
 
   deps.logger.info("waze_drive_imported", {
     telegramId,
@@ -961,6 +1008,6 @@ export async function createWazeDriveFromUrl(
     routeFound: Boolean(routeResult),
     estimatedDurationSeconds: routeResult?.durationSeconds,
   });
-  await replyWithRideReview(ctx, telegramId, sessions);
+  await replyWithRideReview(ctx, { telegramId, sessions });
   return true;
 }

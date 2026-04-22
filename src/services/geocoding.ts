@@ -22,14 +22,16 @@ const NominatimResultSchema = z.object({
 export class GeocodingService {
   private baseUrl: string;
   private userAgent: string;
+  private logger: Logger;
 
-  constructor(
+  constructor({
     baseUrl = "https://nominatim.openstreetmap.org",
     userAgent = "TrempiadaBot/1.0",
-    private logger: Logger = noopLogger,
-  ) {
+    logger = noopLogger,
+  }: GeocodingServiceOptions = {}) {
     this.baseUrl = baseUrl;
     this.userAgent = userAgent;
+    this.logger = logger;
   }
 
   /** Convert a text address to coordinates. Returns null if not found. */
@@ -94,7 +96,7 @@ export class GeocodingService {
   }
 
   /** Convert coordinates to a human-readable label. Returns null on failure. */
-  async reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  async reverseGeocode({ lat, lng }: ReverseGeocodeArgs): Promise<string | null> {
     const start = Date.now();
     const params = new URLSearchParams({
       lat: String(lat),
@@ -143,4 +145,15 @@ export class GeocodingService {
     const parts = displayName.split(", ");
     return parts.slice(0, 3).join(", ");
   }
+}
+
+export interface GeocodingServiceOptions {
+  baseUrl?: string;
+  userAgent?: string;
+  logger?: Logger;
+}
+
+export interface ReverseGeocodeArgs {
+  lat: number;
+  lng: number;
 }

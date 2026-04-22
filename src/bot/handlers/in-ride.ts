@@ -81,24 +81,25 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
     const rider = repo.getUserById(candidate.request.riderId);
     if (!rider) return;
 
-    sessions.setScene(telegramId, "in_ride_relay");
+    sessions.setScene({ telegramId, scene: "in_ride_relay" });
     sessions.updateData(telegramId, { matchId: match.id, codeAttempts: 0 });
 
     sessions.setUserId(rider.telegramId, rider.id);
-    sessions.setScene(rider.telegramId, "in_ride_relay");
+    sessions.setScene({ telegramId: rider.telegramId, scene: "in_ride_relay" });
     sessions.updateData(rider.telegramId, { matchId: match.id });
 
     try {
-      await notify(
-        rider.telegramId,
-        `🎉 A driver accepted your ride!\n\n` +
+      await notify({
+        targetId: rider.telegramId,
+        text:
+          `🎉 A driver accepted your ride!\n\n` +
           `📍 Pickup: ${candidate.request.pickupLabel}\n` +
           `📍 Dropoff: ${candidate.request.dropoffLabel}\n\n` +
           `Your confirmation code: *${code}*\n` +
           `Show this to the driver when they arrive to confirm your identity.\n\n` +
           `You can send messages to your driver through this chat.`,
-        { parse_mode: "Markdown", ...SOS_KEYBOARD },
-      );
+        extra: { parse_mode: "Markdown", ...SOS_KEYBOARD },
+      });
     } catch (err) {
       logger.warn("match_accept_rider_notification_failed", {
         telegramId,
@@ -151,7 +152,7 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
 
     await ctx.editMessageText(
       `👤 ${rider.firstName} (${rider.gender || "—"})\n` +
-        formatTrustProfile(rider, verifications, true) +
+        formatTrustProfile({ user: rider, verifications, forPublic: true }) +
         `\n` +
         `📍 Pickup: ${candidate.request.pickupLabel}\n` +
         `📍 Dropoff: ${candidate.request.dropoffLabel}\n` +
@@ -199,7 +200,7 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
       [1, 2, 3, 4, 5].map((s) => Markup.button.callback(`${s}⭐`, `rate_${s}`)),
     ]);
 
-    sessions.setScene(telegramId, "rating");
+    sessions.setScene({ telegramId, scene: "rating" });
     sessions.updateData(telegramId, { matchId });
 
     await ctx.editMessageText(`Ride complete! 🎉`);
@@ -211,17 +212,19 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
     await ctx.reply(`How was ${rider?.firstName}? Rate your rider:`, ratingKeyboard);
 
     if (rider) {
-      sessions.setScene(rider.telegramId, "rating");
+      sessions.setScene({ telegramId: rider.telegramId, scene: "rating" });
       sessions.updateData(rider.telegramId, { matchId });
       try {
-        await notify(rider.telegramId, `You've arrived! 🎉`, {
-          reply_markup: { remove_keyboard: true },
+        await notify({
+          targetId: rider.telegramId,
+          text: `You've arrived! 🎉`,
+          extra: { reply_markup: { remove_keyboard: true } },
         });
-        await notify(
-          rider.telegramId,
-          `How was your ride with ${driver?.firstName}?`,
-          ratingKeyboard as any,
-        );
+        await notify({
+          targetId: rider.telegramId,
+          text: `How was your ride with ${driver?.firstName}?`,
+          extra: ratingKeyboard as any,
+        });
       } catch (err) {
         logger.warn("rider_rating_prompt_failed", {
           matchId,
@@ -245,7 +248,7 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
       if (!match) return;
 
       const ratedId = match.driverId === session.userId ? match.riderId : match.driverId;
-      repo.addRating(match.id, session.userId, ratedId, score, null);
+      repo.addRating({ matchId: match.id, raterId: session.userId, ratedId, score, comment: null });
       logger.info("rating_submitted", {
         telegramId,
         userId: session.userId,
@@ -298,16 +301,17 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
           const pts =
             driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
           try {
-            await notify(
-              driver.telegramId,
-              `Thanks! ${rider?.firstName} rated you ⭐${driverRating.score}.\n` +
+            await notify({
+              targetId: driver.telegramId,
+              text:
+                `Thanks! ${rider?.firstName} rated you ⭐${driverRating.score}.\n` +
                 `You earned ${pts} points. Balance: ${repo.getPointsBalance(driver.id).toFixed(1)} pts.`,
-            );
-            await notify(
-              driver.telegramId,
-              `What would you like to do next?`,
-              mainMenuKeyboard() as any,
-            );
+            });
+            await notify({
+              targetId: driver.telegramId,
+              text: `What would you like to do next?`,
+              extra: mainMenuKeyboard() as any,
+            });
           } catch {
             // Notification failures should not block rating completion.
           }
@@ -316,16 +320,17 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
         if (rider && riderRating) {
           const pts = riderRating.score >= 4 ? POINTS.RIDER_REWARD_HIGH : POINTS.RIDER_REWARD_LOW;
           try {
-            await notify(
-              rider.telegramId,
-              `Thanks! ${driver?.firstName} rated you ⭐${riderRating.score}.\n` +
+            await notify({
+              targetId: rider.telegramId,
+              text:
+                `Thanks! ${driver?.firstName} rated you ⭐${riderRating.score}.\n` +
                 `You earned ${pts} points. Balance: ${repo.getPointsBalance(rider.id).toFixed(1)} pts.`,
-            );
-            await notify(
-              rider.telegramId,
-              `What would you like to do next?`,
-              mainMenuKeyboard() as any,
-            );
+            });
+            await notify({
+              targetId: rider.telegramId,
+              text: `What would you like to do next?`,
+              extra: mainMenuKeyboard() as any,
+            });
           } catch {
             // Notification failures should not block rating completion.
           }
@@ -356,7 +361,7 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
 
   // --- SOS reply keyboard tap ---
   if ("text" in msg && msg.text === "🚨 SOS") {
-    if (session.userId) await handleSos(ctx, session.userId, repo, logger);
+    if (session.userId) await handleSos(ctx, { userId: session.userId, repo, logger });
     return true;
   }
 
@@ -392,10 +397,10 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
 
         if (rider) {
           try {
-            await notify(
-              rider.telegramId,
-              "Ride started! ✅ Enjoy the ride.\n\nYou can send messages to your driver here.",
-            );
+            await notify({
+              targetId: rider.telegramId,
+              text: "Ride started! ✅ Enjoy the ride.\n\nYou can send messages to your driver here.",
+            });
           } catch (err) {
             logger.warn("pickup_rider_notification_failed", {
               matchId: match.id,
@@ -441,7 +446,10 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
 
       if (otherUser && thisUser && "text" in msg) {
         try {
-          await notify(otherUser.telegramId, `💬 ${thisUser.firstName}: ${msg.text}`);
+          await notify({
+            targetId: otherUser.telegramId,
+            text: `💬 ${thisUser.firstName}: ${msg.text}`,
+          });
           logger.info("relay_message_sent", {
             telegramId,
             fromUserId: thisUser.id,

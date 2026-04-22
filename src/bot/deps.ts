@@ -13,6 +13,12 @@ export interface BotDeps {
   routing: RoutingService;
   carRecognition: CarRecognitionService;
   geocoding: GeocodingService;
-  notify: (targetId: number, text: string, extra?: object) => Promise<void>;
+  notify: (args: NotifyArgs) => Promise<void>;
   logger: Logger;
+}
+
+export interface NotifyArgs {
+  targetId: number;
+  text: string;
+  extra?: object;
 }

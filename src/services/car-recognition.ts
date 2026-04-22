@@ -42,18 +42,20 @@ export class CarRecognitionService {
   private botToken: string;
   private model: string;
   private licenseLookup?: LicenseLookupService;
+  private logger: Logger;
 
-  constructor(
-    geminiApiKey: string,
-    botToken: string,
-    licenseLookup?: LicenseLookupService,
+  constructor({
+    geminiApiKey,
+    botToken,
+    licenseLookup,
     model = "gemini-2.5-flash-lite",
-    private logger: Logger = noopLogger,
-  ) {
+    logger = noopLogger,
+  }: CarRecognitionServiceOptions) {
     this.geminiApiKey = geminiApiKey;
     this.botToken = botToken;
     this.licenseLookup = licenseLookup;
     this.model = model;
+    this.logger = logger;
   }
 
   /** Build the thinkingConfig for the model generation.
@@ -285,4 +287,12 @@ If this is not a car photo, set the error field to "not_a_car".`,
     if (buffer[0] === 0x52 && buffer[1] === 0x49) return "image/webp";
     return "image/jpeg";
   }
+}
+
+export interface CarRecognitionServiceOptions {
+  geminiApiKey: string;
+  botToken: string;
+  licenseLookup?: LicenseLookupService;
+  model?: string;
+  logger?: Logger;
 }

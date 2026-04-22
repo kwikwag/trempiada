@@ -93,7 +93,7 @@ function makeRouting(detour: DetourResult | null = DETOUR_OK): RoutingService {
 // ---------------------------------------------------------------------------
 
 test("findRidersForDriver returns empty when no open requests", async () => {
-  const service = new MatchingService(makeRepo(), makeRouting());
+  const service = new MatchingService({ repo: makeRepo(), routing: makeRouting() });
   const result = await service.findRidersForDriver(makeRide());
   assert.deepEqual(result, []);
 });
@@ -101,7 +101,7 @@ test("findRidersForDriver returns empty when no open requests", async () => {
 test("findRidersForDriver excludes same user as rider", async () => {
   const req = makeRequest({ riderId: 10 }); // same as driverId
   const repo = makeRepo({ getOpenRequests: () => [req] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 0);
 });
@@ -115,7 +115,7 @@ test("findRidersForDriver excludes requests outside time window", async () => {
     latestDeparture: new Date(now + 3 * 60 * 60 * 1000).toISOString(),
   });
   const repo = makeRepo({ getOpenRequests: () => [req] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 0);
 });
@@ -126,7 +126,7 @@ test("findRidersForDriver excludes same-pair within cooldown", async () => {
     getOpenRequests: () => [req],
     getRecentSamePairCount: () => 1,
   });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 0);
 });
@@ -134,7 +134,7 @@ test("findRidersForDriver excludes same-pair within cooldown", async () => {
 test("findRidersForDriver excludes when detour exceeds max", async () => {
   const req = makeRequest();
   const repo = makeRepo({ getOpenRequests: () => [req] });
-  const service = new MatchingService(repo, makeRouting(DETOUR_OVER_LIMIT));
+  const service = new MatchingService({ repo, routing: makeRouting(DETOUR_OVER_LIMIT) });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 0);
 });
@@ -142,7 +142,7 @@ test("findRidersForDriver excludes when detour exceeds max", async () => {
 test("findRidersForDriver excludes when routing returns null", async () => {
   const req = makeRequest();
   const repo = makeRepo({ getOpenRequests: () => [req] });
-  const service = new MatchingService(repo, makeRouting(null));
+  const service = new MatchingService({ repo, routing: makeRouting(null) });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 0);
 });
@@ -150,7 +150,7 @@ test("findRidersForDriver excludes when routing returns null", async () => {
 test("findRidersForDriver returns candidate when all checks pass", async () => {
   const req = makeRequest();
   const repo = makeRepo({ getOpenRequests: () => [req] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 1);
   assert.equal(result[0].request.id, req.id);
@@ -169,7 +169,7 @@ test("findRidersForDriver sorts by detour ascending", async () => {
     },
   } as unknown as RoutingService;
 
-  const service = new MatchingService(repo, routing);
+  const service = new MatchingService({ repo, routing });
   const result = await service.findRidersForDriver(makeRide());
   assert.equal(result.length, 2);
   assert.ok(result[0].detour.addedSeconds <= result[1].detour.addedSeconds);
@@ -180,7 +180,7 @@ test("findRidersForDriver sorts by detour ascending", async () => {
 // ---------------------------------------------------------------------------
 
 test("findDriversForRider returns empty when no open rides", async () => {
-  const service = new MatchingService(makeRepo(), makeRouting());
+  const service = new MatchingService({ repo: makeRepo(), routing: makeRouting() });
   const result = await service.findDriversForRider(makeRequest());
   assert.deepEqual(result, []);
 });
@@ -188,7 +188,7 @@ test("findDriversForRider returns empty when no open rides", async () => {
 test("findDriversForRider excludes same user as driver", async () => {
   const ride = makeRide({ driverId: 20 }); // same as riderId
   const repo = makeRepo({ getOpenRides: () => [ride] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findDriversForRider(makeRequest());
   assert.equal(result.length, 0);
 });
@@ -196,7 +196,7 @@ test("findDriversForRider excludes same user as driver", async () => {
 test("findDriversForRider excludes rides with no available seats", async () => {
   const ride = makeRide({ availableSeats: 0 });
   const repo = makeRepo({ getOpenRides: () => [ride] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findDriversForRider(makeRequest());
   assert.equal(result.length, 0);
 });
@@ -211,7 +211,7 @@ test("findDriversForRider excludes rides outside time window", async () => {
     latestDeparture: new Date(now + 60 * 60 * 1000).toISOString(), // window closes in 1h
   });
   const repo = makeRepo({ getOpenRides: () => [ride] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findDriversForRider(req);
   assert.equal(result.length, 0);
 });
@@ -222,7 +222,7 @@ test("findDriversForRider excludes same-pair within cooldown", async () => {
     getOpenRides: () => [ride],
     getRecentSamePairCount: () => 2,
   });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findDriversForRider(makeRequest());
   assert.equal(result.length, 0);
 });
@@ -230,7 +230,7 @@ test("findDriversForRider excludes same-pair within cooldown", async () => {
 test("findDriversForRider excludes when detour exceeds max", async () => {
   const ride = makeRide();
   const repo = makeRepo({ getOpenRides: () => [ride] });
-  const service = new MatchingService(repo, makeRouting(DETOUR_OVER_LIMIT));
+  const service = new MatchingService({ repo, routing: makeRouting(DETOUR_OVER_LIMIT) });
   const result = await service.findDriversForRider(makeRequest());
   assert.equal(result.length, 0);
 });
@@ -238,7 +238,7 @@ test("findDriversForRider excludes when detour exceeds max", async () => {
 test("findDriversForRider returns match when all checks pass", async () => {
   const ride = makeRide();
   const repo = makeRepo({ getOpenRides: () => [ride] });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const result = await service.findDriversForRider(makeRequest());
   assert.equal(result.length, 1);
   assert.equal(result[0].ride.id, ride.id);
@@ -256,11 +256,11 @@ test("createMatch calls repo and returns a match with confirmation code", () => 
       return { id: 99, ...args, status: "pending", createdAt: "" } as any;
     },
   });
-  const service = new MatchingService(repo, makeRouting());
+  const service = new MatchingService({ repo, routing: makeRouting() });
   const ride = makeRide();
   const req = makeRequest();
 
-  const match = service.createMatch(ride, req, DETOUR_OK);
+  const match = service.createMatch({ ride, request: req, detour: DETOUR_OK });
 
   assert.ok(match);
   assert.equal(capturedArgs.rideId, ride.id);

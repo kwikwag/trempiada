@@ -72,17 +72,17 @@ async function main() {
   const repo = new Repository(db);
 
   const sessions = new SessionManager(logger);
-  const routing = new RoutingService(OSRM_URL, logger);
-  const matching = new MatchingService(repo, routing, logger);
+  const routing = new RoutingService({ osrmUrl: OSRM_URL, logger });
+  const matching = new MatchingService({ repo, routing, logger });
   const licenseLookup = new LicenseLookupService(LICENSE_DATABASE_PATH);
-  const carRecognition = new CarRecognitionService(
-    GEMINI_API_KEY,
-    BOT_TOKEN,
+  const carRecognition = new CarRecognitionService({
+    geminiApiKey: GEMINI_API_KEY,
+    botToken: BOT_TOKEN,
     licenseLookup,
-    process.env.GEMINI_MODEL,
+    model: process.env.GEMINI_MODEL,
     logger,
-  );
-  const geocoding = new GeocodingService(undefined, undefined, logger);
+  });
+  const geocoding = new GeocodingService({ logger });
   logger.info("services_initialized");
 
   // --- Initialize bot ---
@@ -92,13 +92,22 @@ async function main() {
   const dev = devIds.size > 0 ? new DevService() : undefined;
   const devRepo = dev ? new DevRepository(db) : undefined;
 
-  registerHandlers(bot, repo, sessions, matching, routing, carRecognition, geocoding, {
-    whitelist: whitelist.size > 0 ? whitelist : undefined,
-    dev,
-    devRepo,
-    devIds,
-    altCount,
-    logger,
+  registerHandlers({
+    bot,
+    repo,
+    sessions,
+    matching,
+    routing,
+    carRecognition,
+    geocoding,
+    options: {
+      whitelist: whitelist.size > 0 ? whitelist : undefined,
+      dev,
+      devRepo,
+      devIds,
+      altCount,
+      logger,
+    },
   });
 
   // --- Error handling ---

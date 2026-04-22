@@ -76,16 +76,22 @@ export function createLogger(minLevel = parseLogLevel(process.env.LOG_LEVEL)): L
   const outLogger = createPinoLogger(minLevel, process.stdout);
   const errLogger = createPinoLogger(minLevel, process.stderr);
 
-  function write(level: LogLevel, message: string, context: LogContext = {}): void {
+  function write({ level, message, context = {} }: WriteLogArgs): void {
     const ctx = normalizeValue(context) as LogContext;
     const pinoLogger = level === "warn" || level === "error" ? errLogger : outLogger;
     pinoLogger[level](ctx, message);
   }
 
   return {
-    debug: (message, context) => write("debug", message, context),
-    info: (message, context) => write("info", message, context),
-    warn: (message, context) => write("warn", message, context),
-    error: (message, context) => write("error", message, context),
+    debug: (message, context) => write({ level: "debug", message, context }),
+    info: (message, context) => write({ level: "info", message, context }),
+    warn: (message, context) => write({ level: "warn", message, context }),
+    error: (message, context) => write({ level: "error", message, context }),
   };
+}
+
+interface WriteLogArgs {
+  level: LogLevel;
+  message: string;
+  context?: LogContext;
 }

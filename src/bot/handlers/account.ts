@@ -22,7 +22,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
 
     if (existing) {
       sessions.setUserId(telegramId, existing.id);
-      sessions.setScene(telegramId, "idle");
+      sessions.setScene({ telegramId, scene: "idle" });
       logger.info("user_started", {
         telegramId,
         userId: existing.id,
@@ -33,7 +33,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    sessions.setScene(telegramId, "registration_name", {});
+    sessions.setScene({ telegramId, scene: "registration_name", data: {} });
     logger.info("user_started", {
       telegramId,
       existingUser: false,
@@ -55,14 +55,14 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    await renderTrustProfile(ctx, session.userId, repo);
+    await renderTrustProfile(ctx, { userId: session.userId, repo });
   });
 
   bot.command("sos", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await handleSos(ctx, session.userId, repo, logger);
+    await handleSos(ctx, { userId: session.userId, repo, logger });
   });
 
   bot.command("status", async (ctx) => {
@@ -74,7 +74,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    await showStatus(ctx, session.userId, repo);
+    await showStatus(ctx, { userId: session.userId, repo });
   });
 
   bot.command("cancel", async (ctx) => {
@@ -119,7 +119,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    sessions.setScene(telegramId, "cancel_reason", { matchId: activeMatch.id });
+    sessions.setScene({ telegramId, scene: "cancel_reason", data: { matchId: activeMatch.id } });
     logger.info("cancel_requested", {
       telegramId,
       userId: session.userId,
@@ -166,7 +166,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await renderTrustProfile(ctx, session.userId, repo);
+    await renderTrustProfile(ctx, { userId: session.userId, repo });
   });
 
   bot.action("menu_status", async (ctx) => {
@@ -174,13 +174,13 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await showStatus(ctx, session.userId, repo);
+    await showStatus(ctx, { userId: session.userId, repo });
   });
 
   bot.action("menu_start", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    sessions.setScene(telegramId, "registration_name", {});
+    sessions.setScene({ telegramId, scene: "registration_name", data: {} });
     await ctx.reply("What's your first name? (This is what others will see.)");
   });
 
@@ -189,7 +189,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await handleSos(ctx, session.userId, repo, logger);
+    await handleSos(ctx, { userId: session.userId, repo, logger });
   });
 
   bot.action("cancel_from_status", async (ctx) => {
@@ -204,7 +204,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    sessions.setScene(telegramId, "cancel_reason", { matchId: activeMatch.id });
+    sessions.setScene({ telegramId, scene: "cancel_reason", data: { matchId: activeMatch.id } });
     await ctx.reply(`Cancelling your ride. What happened?`, cancellationKeyboard());
   });
 
@@ -298,7 +298,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       const match = repo.getMatchById(matchId);
       if (!match) return;
 
-      repo.cancelMatch(matchId, session.userId, reason);
+      repo.cancelMatch({ matchId, cancelledBy: session.userId, reason });
       repo.updateRideStatus(match.rideId, "cancelled");
       repo.updateRequestStatus(match.requestId, "cancelled");
       logger.info("ride_cancelled", {
@@ -328,19 +328,20 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
 
       if (otherUser) {
         try {
-          await notify(
-            otherUser.telegramId,
-            `⚠️ Your ride has been cancelled by the other party.\n` +
+          await notify({
+            targetId: otherUser.telegramId,
+            text:
+              `⚠️ Your ride has been cancelled by the other party.\n` +
               (reason === "no_show"
                 ? `Reason: they reported you didn't show up.\nIf this was a mistake, contact support.`
                 : ``),
-            { reply_markup: { remove_keyboard: true } },
-          );
-          await notify(
-            otherUser.telegramId,
-            `What would you like to do next?`,
-            mainMenuKeyboard() as any,
-          );
+            extra: { reply_markup: { remove_keyboard: true } },
+          });
+          await notify({
+            targetId: otherUser.telegramId,
+            text: `What would you like to do next?`,
+            extra: mainMenuKeyboard() as any,
+          });
         } catch (err) {
           logger.warn("cancel_other_party_notification_failed", {
             telegramId,
@@ -365,7 +366,11 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const v = verifications.find((v) => v.type === type);
     if (!v) return;
 
-    repo.setVerificationVisibility(session.userId, type, !v.sharedWithRiders);
+    repo.setVerificationVisibility({
+      userId: session.userId,
+      type,
+      shared: !v.sharedWithRiders,
+    });
     const newState = !v.sharedWithRiders ? "visible to riders" : "hidden from riders";
     logger.info("verification_visibility_changed", {
       telegramId,
@@ -375,6 +380,6 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     });
 
     await ctx.answerCbQuery(`${type} is now ${newState}`);
-    await renderTrustProfile(ctx, session.userId, repo);
+    await renderTrustProfile(ctx, { userId: session.userId, repo });
   });
 }

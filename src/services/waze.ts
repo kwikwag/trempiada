@@ -47,12 +47,14 @@ export function extractWazeSdToken(wazeUrl: string): string | null {
 
 export class WazeService {
   private baseUrl: string;
+  private logger: Logger;
 
-  constructor(
+  constructor({
     baseUrl = "https://www.waze.com/il-rtserver/web",
-    private logger: Logger = noopLogger,
-  ) {
+    logger = noopLogger,
+  }: WazeServiceOptions = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.logger = logger;
   }
 
   async getDriveInfo(wazeUrl: string): Promise<WazeDriveInfo | null> {
@@ -125,4 +127,9 @@ export class WazeService {
       return null;
     }
   }
+}
+
+export interface WazeServiceOptions {
+  baseUrl?: string;
+  logger?: Logger;
 }

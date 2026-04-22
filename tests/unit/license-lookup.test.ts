@@ -3,8 +3,19 @@ import test from "node:test";
 import { LicenseLookupService } from "../../src/services/license-lookup";
 import { createTempLicenseDb } from "../helpers/license-db";
 
+function createToyotaLicenseDb() {
+  return createTempLicenseDb({
+    plateNo: 12345678,
+    make: "Toyota",
+    model: "Corolla",
+    color: "White",
+    year: 2021,
+    seats: 5,
+  });
+}
+
 test("LicenseLookupService returns car details by license plate", () => {
-  const { dbPath, cleanup } = createTempLicenseDb(12345678, "Toyota", "Corolla", "White", 2021, 5);
+  const { dbPath, cleanup } = createToyotaLicenseDb();
   const service = new LicenseLookupService(dbPath);
 
   try {
@@ -23,7 +34,7 @@ test("LicenseLookupService returns car details by license plate", () => {
 });
 
 test("LicenseLookupService normalizes formatted plate strings", () => {
-  const { dbPath, cleanup } = createTempLicenseDb(12345678, "Toyota", "Corolla", "White", 2021, 5);
+  const { dbPath, cleanup } = createToyotaLicenseDb();
   const service = new LicenseLookupService(dbPath);
 
   try {
@@ -35,7 +46,7 @@ test("LicenseLookupService normalizes formatted plate strings", () => {
 });
 
 test("LicenseLookupService returns null when plate is not found", () => {
-  const { dbPath, cleanup } = createTempLicenseDb(12345678, "Toyota", "Corolla", "White", 2021, 5);
+  const { dbPath, cleanup } = createToyotaLicenseDb();
   const service = new LicenseLookupService(dbPath);
 
   try {
@@ -47,7 +58,7 @@ test("LicenseLookupService returns null when plate is not found", () => {
 });
 
 test("LicenseLookupService rejects invalid plate numbers", () => {
-  const { dbPath, cleanup } = createTempLicenseDb(12345678, "Toyota", "Corolla", "White", 2021, 5);
+  const { dbPath, cleanup } = createToyotaLicenseDb();
   const service = new LicenseLookupService(dbPath);
 
   try {

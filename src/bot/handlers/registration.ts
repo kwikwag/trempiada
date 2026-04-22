@@ -7,15 +7,32 @@ import { formatCarInfo, formatTrustProfile } from "../../utils";
 // Imported lazily to avoid circular deps — registration completes and may hand off to drive posting
 import type { BotDeps as _Deps } from "../deps";
 
-type StartDriveFlow = (ctx: Context, telegramId: number) => Promise<void>;
-type CreateWazeDrive = (ctx: Context, telegramId: number, url: string) => Promise<boolean>;
+type StartDriveFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
+type CreateWazeDrive = (args: {
+  ctx: Context;
+  telegramId: number;
+  url: string;
+}) => Promise<boolean>;
 
-export function registerRegistrationHandlers(
-  bot: Telegraf,
-  deps: BotDeps,
-  startDrivePostingFlow: StartDriveFlow,
-  createWazeDriveFromUrl: CreateWazeDrive,
-): void {
+export interface RegisterRegistrationHandlersArgs {
+  bot: Telegraf;
+  deps: BotDeps;
+  startDrivePostingFlow: StartDriveFlow;
+  createWazeDriveFromUrl: CreateWazeDrive;
+}
+
+export interface HandleRegistrationMessageArgs {
+  ctx: Context;
+  deps: BotDeps;
+  finishRegistrationCb: (args: { ctx: Context; telegramId: number }) => Promise<void>;
+}
+
+export function registerRegistrationHandlers({
+  bot,
+  deps,
+  startDrivePostingFlow,
+  createWazeDriveFromUrl,
+}: RegisterRegistrationHandlersArgs): void {
   const { repo, sessions, logger } = deps;
 
   async function finishRegistration(ctx: Context, telegramId: number): Promise<void> {
@@ -23,13 +40,13 @@ export function registerRegistrationHandlers(
     if (!session.userId) return;
     const user = repo.getUserById(session.userId)!;
     const verifications = repo.getVerifications(session.userId);
-    const profile = formatTrustProfile(user, verifications);
+    const profile = formatTrustProfile({ user, verifications });
 
     await ctx.reply(`You're all set! 🎉\n\nYour trust profile:\n${profile}`);
     await showMainMenu(ctx, user.firstName);
 
     if (session.data.pendingWazeDriveUrl) {
-      await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
+      await createWazeDriveFromUrl({ ctx, telegramId, url: session.data.pendingWazeDriveUrl });
     }
   }
 
@@ -53,11 +70,11 @@ export function registerRegistrationHandlers(
             photoFileId: largest.file_id,
             phone: String(telegramId),
           });
-          repo.addVerification(user.id, "phone");
-          repo.addVerification(user.id, "photo");
+          repo.addVerification({ userId: user.id, type: "phone" });
+          repo.addVerification({ userId: user.id, type: "photo" });
 
           sessions.setUserId(telegramId, user.id);
-          sessions.setScene(telegramId, "idle");
+          sessions.setScene({ telegramId, scene: "idle" });
           logger.info("user_registered", {
             telegramId,
             userId: user.id,
@@ -72,7 +89,7 @@ export function registerRegistrationHandlers(
         // Fall through to manual photo upload
       }
 
-      sessions.setScene(telegramId, "registration_photo");
+      sessions.setScene({ telegramId, scene: "registration_photo" });
       logger.info("registration_profile_photo_needed", { telegramId });
       await ctx.editMessageText(
         `Got it.\n\nNow, send me a photo of yourself. ` +
@@ -90,18 +107,18 @@ export function registerRegistrationHandlers(
 
     if (!session.userId || !carDetails) return;
 
-    const car = repo.addCar(
-      session.userId,
-      carDetails.plateNumber,
-      carDetails.make,
-      carDetails.model,
-      carDetails.color,
-      carDetails.year,
-      carDetails.seatCount,
-      carPhotoFileId,
-    );
+    const car = repo.addCar({
+      userId: session.userId,
+      plateNumber: carDetails.plateNumber,
+      make: carDetails.make,
+      model: carDetails.model,
+      color: carDetails.color,
+      year: carDetails.year,
+      seatCount: carDetails.seatCount,
+      photoFileId: carPhotoFileId,
+    });
 
-    repo.addVerification(session.userId, "car");
+    repo.addVerification({ userId: session.userId, type: "car" });
     logger.info("car_registered", {
       telegramId,
       userId: session.userId,
@@ -113,18 +130,18 @@ export function registerRegistrationHandlers(
     await ctx.editMessageText(`Car registered! ✅\n\n` + formatCarInfo(car));
 
     if (session.data.pendingWazeDriveUrl) {
-      await createWazeDriveFromUrl(ctx, telegramId, session.data.pendingWazeDriveUrl);
+      await createWazeDriveFromUrl({ ctx, telegramId, url: session.data.pendingWazeDriveUrl });
       return;
     }
 
     // Auto-continue into the drive posting flow
-    await startDrivePostingFlow(ctx, telegramId);
+    await startDrivePostingFlow({ ctx, telegramId });
   });
 
   bot.action("car_confirm_retry", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    sessions.setScene(telegramId, "car_registration_photo", {});
+    sessions.setScene({ telegramId, scene: "car_registration_photo", data: {} });
     await ctx.editMessageText("No problem. Send another photo of your car.");
   });
 
@@ -154,17 +171,17 @@ export function registerRegistrationHandlers(
       await ctx.answerCbQuery();
       const telegramId = ctx.from!.id;
       sessions.updateData(telegramId, { carEditField: field });
-      sessions.setScene(telegramId, "car_edit");
+      sessions.setScene({ telegramId, scene: "car_edit" });
       await ctx.editMessageText(carEditPrompts[field], { parse_mode: "Markdown" });
     });
   }
 }
 
-export async function handleRegistrationMessage(
-  ctx: Context,
-  deps: BotDeps,
-  finishRegistrationCb: (ctx: Context, telegramId: number) => Promise<void>,
-): Promise<boolean> {
+export async function handleRegistrationMessage({
+  ctx,
+  deps,
+  finishRegistrationCb,
+}: HandleRegistrationMessageArgs): Promise<boolean> {
   const telegramId = ctx.from!.id;
   const { repo, sessions, carRecognition, logger } = deps;
   const session = sessions.get(telegramId);
@@ -179,7 +196,7 @@ export async function handleRegistrationMessage(
     }
 
     sessions.updateData(telegramId, { firstName });
-    sessions.setScene(telegramId, "registration_gender");
+    sessions.setScene({ telegramId, scene: "registration_gender" });
     logger.info("registration_name_received", {
       telegramId,
       firstNameLength: firstName.length,
@@ -208,18 +225,18 @@ export async function handleRegistrationMessage(
       phone: ctx.from?.id ? String(ctx.from.id) : undefined,
     });
 
-    repo.addVerification(user.id, "phone");
-    repo.addVerification(user.id, "photo");
+    repo.addVerification({ userId: user.id, type: "phone" });
+    repo.addVerification({ userId: user.id, type: "photo" });
 
     sessions.setUserId(telegramId, user.id);
-    sessions.setScene(telegramId, "idle");
+    sessions.setScene({ telegramId, scene: "idle" });
     logger.info("user_registered", {
       telegramId,
       userId: user.id,
       profilePhotoSource: "manual_upload",
     });
 
-    await finishRegistrationCb(ctx, telegramId);
+    await finishRegistrationCb({ ctx, telegramId });
     return true;
   }
 
@@ -255,7 +272,7 @@ export async function handleRegistrationMessage(
     }
 
     sessions.updateData(telegramId, { carDetails, carPhotoFileId: largest.file_id });
-    sessions.setScene(telegramId, "car_registration_confirm");
+    sessions.setScene({ telegramId, scene: "car_registration_confirm" });
     logger.info("car_photo_analysis_completed", {
       telegramId,
       userId: session.userId,
@@ -310,7 +327,7 @@ export async function handleRegistrationMessage(
     }
 
     sessions.updateData(telegramId, { carDetails, carEditField: undefined });
-    sessions.setScene(telegramId, "car_registration_confirm");
+    sessions.setScene({ telegramId, scene: "car_registration_confirm" });
     logger.info("car_details_edited", {
       telegramId,
       userId: session.userId,

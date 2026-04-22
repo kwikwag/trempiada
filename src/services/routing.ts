@@ -35,12 +35,14 @@ const OsrmNearestResponseSchema = z.object({
  */
 export class RoutingService {
   private baseUrl: string;
+  private logger: Logger;
 
-  constructor(
-    osrmUrl: string = "http://localhost:5000",
-    private logger: Logger = noopLogger,
-  ) {
+  constructor({
+    osrmUrl = "http://localhost:5000",
+    logger = noopLogger,
+  }: RoutingServiceOptions = {}) {
     this.baseUrl = osrmUrl.replace(/\/$/, "");
+    this.logger = logger;
   }
 
   /**
@@ -110,12 +112,12 @@ export class RoutingService {
    *
    * Returns null if the route can't be calculated.
    */
-  async calculateDetour(
-    driverOrigin: GeoPoint,
-    driverDest: GeoPoint,
-    pickup: GeoPoint,
-    dropoff: GeoPoint,
-  ): Promise<DetourResult | null> {
+  async calculateDetour({
+    driverOrigin,
+    driverDest,
+    pickup,
+    dropoff,
+  }: CalculateDetourArgs): Promise<DetourResult | null> {
     const start = Date.now();
     // Direct route
     const direct = await this.getRoute(driverOrigin, driverDest);
@@ -220,4 +222,16 @@ export class RoutingService {
       return null;
     }
   }
+}
+
+export interface RoutingServiceOptions {
+  osrmUrl?: string;
+  logger?: Logger;
+}
+
+export interface CalculateDetourArgs {
+  driverOrigin: GeoPoint;
+  driverDest: GeoPoint;
+  pickup: GeoPoint;
+  dropoff: GeoPoint;
 }

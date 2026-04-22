@@ -7,14 +7,23 @@ import Database from "better-sqlite3";
  * Spin up a temporary SQLite license database with one vehicle entry.
  * Returns the path and a cleanup function to delete the temp directory.
  */
-export function createTempLicenseDb(
-  plateNo: number,
-  make: string,
-  model: string,
-  color: string,
-  year: number,
-  seats: number,
-): { dbPath: string; cleanup: () => void } {
+export interface CreateTempLicenseDbArgs {
+  plateNo: number;
+  make: string;
+  model: string;
+  color: string;
+  year: number;
+  seats: number;
+}
+
+export function createTempLicenseDb({
+  plateNo,
+  make,
+  model,
+  color,
+  year,
+  seats,
+}: CreateTempLicenseDbArgs): { dbPath: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "trempbot-test-"));
   const dbPath = join(dir, "licenses.db");
   const db = new Database(dbPath);

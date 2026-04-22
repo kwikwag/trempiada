@@ -144,6 +144,56 @@ interface PointsBalanceRow {
   points_balance: number;
 }
 
+export interface AddVerificationArgs {
+  userId: number;
+  type: VerificationType;
+  externalRef?: string | null;
+  sharedWithRiders?: boolean;
+}
+
+export interface SetVerificationVisibilityArgs {
+  userId: number;
+  type: VerificationType;
+  shared: boolean;
+}
+
+export interface AddCarArgs {
+  userId: number;
+  plateNumber: string;
+  make: string;
+  model: string;
+  color: string;
+  year: number | null;
+  seatCount: number;
+  photoFileId: string | null;
+}
+
+export interface CancelMatchArgs {
+  matchId: number;
+  cancelledBy: number;
+  reason: CancellationReason;
+}
+
+export interface RecentSamePairCountArgs {
+  userId1: number;
+  userId2: number;
+  hoursBack: number;
+}
+
+export interface AddRatingArgs {
+  matchId: number;
+  raterId: number;
+  ratedId: number;
+  score: number;
+  comment: string | null;
+}
+
+export interface CreateDisputeArgs {
+  matchId: number;
+  reporterId: number;
+  description: string;
+}
+
 /**
  * Data access layer — thin wrapper over SQLite queries.
  * Every public method is a single prepared statement or small transaction.
@@ -294,12 +344,12 @@ export class Repository {
 
   // ---- Trust Verifications ----
 
-  addVerification(
-    userId: number,
-    type: VerificationType,
-    externalRef: string | null = null,
-    sharedWithRiders: boolean = true,
-  ): void {
+  addVerification({
+    userId,
+    type,
+    externalRef = null,
+    sharedWithRiders = true,
+  }: AddVerificationArgs): void {
     this.db
       .prepare(
         `
@@ -316,7 +366,7 @@ export class Repository {
     this.recalcTrustScore(userId);
   }
 
-  setVerificationVisibility(userId: number, type: VerificationType, shared: boolean): void {
+  setVerificationVisibility({ userId, type, shared }: SetVerificationVisibilityArgs): void {
     this.db
       .prepare(
         `
@@ -380,16 +430,16 @@ export class Repository {
 
   // ---- Cars ----
 
-  addCar(
-    userId: number,
-    plateNumber: string,
-    make: string,
-    model: string,
-    color: string,
-    year: number | null,
-    seatCount: number,
-    photoFileId: string | null,
-  ): Car {
+  addCar({
+    userId,
+    plateNumber,
+    make,
+    model,
+    color,
+    year,
+    seatCount,
+    photoFileId,
+  }: AddCarArgs): Car {
     // Deactivate other cars for this user
     this.db.prepare("UPDATE cars SET is_active = 0 WHERE user_id = ?").run(userId);
 
@@ -621,7 +671,7 @@ export class Repository {
     this.db.prepare(`UPDATE matches SET status = ?${extra} WHERE id = ?`).run(status, matchId);
   }
 
-  cancelMatch(matchId: number, cancelledBy: number, reason: CancellationReason): void {
+  cancelMatch({ matchId, cancelledBy, reason }: CancelMatchArgs): void {
     this.db
       .prepare(
         `
@@ -653,7 +703,7 @@ export class Repository {
   }
 
   /** Anti-gaming: check if same pair rode together recently */
-  getRecentSamePairCount(userId1: number, userId2: number, hoursBack: number): number {
+  getRecentSamePairCount({ userId1, userId2, hoursBack }: RecentSamePairCountArgs): number {
     const row = this.db
       .prepare<[number, number, number, number, number], CountRow>(
         `
@@ -683,13 +733,7 @@ export class Repository {
 
   // ---- Ratings ----
 
-  addRating(
-    matchId: number,
-    raterId: number,
-    ratedId: number,
-    score: number,
-    comment: string | null,
-  ): Rating {
+  addRating({ matchId, raterId, ratedId, score, comment }: AddRatingArgs): Rating {
     const stmt = this.db.prepare<[number, number, number, number, string | null], RatingRow>(`
       INSERT INTO ratings (match_id, rater_id, rated_id, score, comment)
       VALUES (?, ?, ?, ?, ?)
@@ -724,7 +768,7 @@ export class Repository {
 
   // ---- Disputes ----
 
-  createDispute(matchId: number, reporterId: number, description: string): Dispute {
+  createDispute({ matchId, reporterId, description }: CreateDisputeArgs): Dispute {
     const stmt = this.db.prepare<[number, number, string], DisputeRow>(`
       INSERT INTO disputes (match_id, reporter_id, description)
       VALUES (?, ?, ?)

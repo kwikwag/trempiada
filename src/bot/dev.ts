@@ -56,17 +56,29 @@ export class DevService {
   }
 }
 
-export function registerDevHandlers(
-  bot: Telegraf,
-  dev: DevService,
-  devIds: Set<number>,
-  sessions: SessionManager,
-  devRepo: DevRepository,
-  altCount: number,
-  routing: RoutingService,
-  geocoding: GeocodingService,
-  whitelist?: Set<number>,
-): void {
+export interface RegisterDevHandlersArgs {
+  bot: Telegraf;
+  dev: DevService;
+  devIds: Set<number>;
+  sessions: SessionManager;
+  devRepo: DevRepository;
+  altCount: number;
+  routing: RoutingService;
+  geocoding: GeocodingService;
+  whitelist?: Set<number>;
+}
+
+export function registerDevHandlers({
+  bot,
+  dev,
+  devIds,
+  sessions,
+  devRepo,
+  altCount,
+  routing,
+  geocoding,
+  whitelist,
+}: RegisterDevHandlersArgs): void {
   function getRealId(ctx: Context): number {
     return (ctx as any).__realTelegramId ?? ctx.from!.id;
   }
@@ -75,7 +87,15 @@ export function registerDevHandlers(
     return ctx.from!.id;
   }
 
-  function labelForEffectiveId(dev: DevService, realId: number, effectiveId: number): string {
+  function labelForEffectiveId({
+    dev,
+    realId,
+    effectiveId,
+  }: {
+    dev: DevService;
+    realId: number;
+    effectiveId: number;
+  }): string {
     if (effectiveId === realId) return "Self";
     return dev.labelFor(effectiveId).trim() || String(effectiveId);
   }
@@ -165,7 +185,7 @@ export function registerDevHandlers(
     if (!devIds.has(realId)) return;
 
     const effectiveId = getEffectiveId(ctx);
-    const label = labelForEffectiveId(dev, realId, effectiveId);
+    const label = labelForEffectiveId({ dev, realId, effectiveId });
     await ctx.reply(
       `Delete all database rows and session data for ${label} (${effectiveId})?\n\n` +
         "This is a dev-only hard delete and cannot be undone.",
@@ -184,7 +204,7 @@ export function registerDevHandlers(
     if (!devIds.has(realId)) return;
 
     const targetId = Number.parseInt(ctx.match![1], 10);
-    const label = labelForEffectiveId(dev, realId, targetId);
+    const label = labelForEffectiveId({ dev, realId, effectiveId: targetId });
     const deleted = devRepo.hardDeleteUserByTelegramId(targetId);
     sessions.reset(targetId);
 

@@ -25,7 +25,10 @@ const TEST_PLATE_NO = 45711302; // 457-11-302
 const skip = !GEMINI_API_KEY ? "GEMINI_API_KEY not set" : false;
 
 test("e2e: identifies plate digits from test image", { skip }, async () => {
-  const service = new CarRecognitionService(GEMINI_API_KEY!, "fake-token");
+  const service = new CarRecognitionService({
+    geminiApiKey: GEMINI_API_KEY!,
+    botToken: "fake-token",
+  });
 
   const result = await service.analyzeCarImage(readFileSync(FIXTURE_IMAGE));
   console.log("Gemini response:", JSON.stringify(result, null, 2));
@@ -37,7 +40,11 @@ test("e2e: identifies plate digits from test image", { skip }, async () => {
 
 test("e2e: enriches Gemini output with real license DB", { skip }, async () => {
   const lookup = new LicenseLookupService(LICENSE_DB_PATH);
-  const service = new CarRecognitionService(GEMINI_API_KEY!, "fake-token", lookup);
+  const service = new CarRecognitionService({
+    geminiApiKey: GEMINI_API_KEY!,
+    botToken: "fake-token",
+    licenseLookup: lookup,
+  });
 
   try {
     const result = await service.analyzeCarImage(readFileSync(FIXTURE_IMAGE));

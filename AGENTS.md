@@ -81,6 +81,7 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 - All dates stored as ISO 8601 strings in SQLite
 - Telegram file IDs stored for photos (not downloaded/stored locally)
 - Points are REAL in SQLite (fractional values like 0.5)
+- Prefer named object arguments for functions where positional order is unclear; use them by default for functions with 4+ arguments.
 - Keep code DRY and simple.
 
 ## UX Model

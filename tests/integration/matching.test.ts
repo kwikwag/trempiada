@@ -70,8 +70,17 @@ function makeDb() {
 
 function seedDriver(repo: Repository, n: number) {
   const user = repo.createUser(1000 + n, `Driver${n}`);
-  const car = repo.addCar(user.id, `10-00${n}-0${n}`, "Toyota", "Corolla", "White", 2020, 4, null);
-  repo.addVerification(user.id, "car");
+  const car = repo.addCar({
+    userId: user.id,
+    plateNumber: `10-00${n}-0${n}`,
+    make: "Toyota",
+    model: "Corolla",
+    color: "White",
+    year: 2020,
+    seatCount: 4,
+    photoFileId: null,
+  });
+  repo.addVerification({ userId: user.id, type: "car" });
   return { user, car };
 }
 
@@ -85,12 +94,15 @@ function seedRider(repo: Repository, n: number) {
  */
 function makeRouting(addedSeconds = 60): RoutingService {
   return {
-    calculateDetour: async (
-      _origin: GeoPoint,
-      _dest: GeoPoint,
-      pickup: GeoPoint,
-      dropoff: GeoPoint,
-    ): Promise<DetourResult> => ({
+    calculateDetour: async ({
+      pickup,
+      dropoff,
+    }: {
+      driverOrigin: GeoPoint;
+      driverDest: GeoPoint;
+      pickup: GeoPoint;
+      dropoff: GeoPoint;
+    }): Promise<DetourResult> => ({
       originalDuration: DRIVE_DURATION_1,
       detourDuration: DRIVE_DURATION_1 + addedSeconds,
       addedSeconds,
@@ -118,7 +130,7 @@ test("rider posts first: driver immediately sees the rider as a candidate", asyn
   const { repo } = makeDb();
   const { user: driver, car } = seedDriver(repo, 1);
   const rider = seedRider(repo, 1);
-  const matching = new MatchingService(repo, makeRouting());
+  const matching = new MatchingService({ repo, routing: makeRouting() });
 
   // Rider posts first
   repo.createRideRequest({
@@ -171,7 +183,7 @@ test("driver posts first: rider immediately sees matching driver", async () => {
   const { repo } = makeDb();
   const { user: driver, car } = seedDriver(repo, 2);
   const rider = seedRider(repo, 2);
-  const matching = new MatchingService(repo, makeRouting());
+  const matching = new MatchingService({ repo, routing: makeRouting() });
 
   // Driver posts first — departs in 10 minutes
   repo.createRide({
@@ -224,7 +236,7 @@ test("midpoint pickup: driver leaving now matches rider at Hemed within 60-min w
   const { repo } = makeDb();
   const { user: driver, car } = seedDriver(repo, 3);
   const rider = seedRider(repo, 3);
-  const matching = new MatchingService(repo, makeRouting(30)); // 30s detour — Hemed is on-route
+  const matching = new MatchingService({ repo, routing: makeRouting(30) }); // 30s detour — Hemed is on-route
 
   repo.createRideRequest({
     riderId: rider.id,
@@ -276,7 +288,7 @@ test("correctly rejects: driver already past pickup, rider too late to catch the
   const { repo } = makeDb();
   const { user: driver, car } = seedDriver(repo, 4);
   const rider = seedRider(repo, 4);
-  const matching = new MatchingService(repo, makeRouting());
+  const matching = new MatchingService({ repo, routing: makeRouting() });
 
   // The request is posted now; rider needs pickup at Hemed within 5 minutes
   repo.createRideRequest({
@@ -335,7 +347,7 @@ test("KNOWN LIMITATION: en-route driver approaching pickup should match riding r
   const { repo } = makeDb();
   const { user: driver, car } = seedDriver(repo, 5);
   const rider = seedRider(repo, 5);
-  const matching = new MatchingService(repo, makeRouting(30));
+  const matching = new MatchingService({ repo, routing: makeRouting(30) });
 
   // Rider at Hemed posts now, needs pickup in 10 minutes
   repo.createRideRequest({
@@ -401,7 +413,7 @@ test("pickup far off route (Haifa) is quick-filtered without calling OSRM", asyn
     },
   } as unknown as RoutingService;
 
-  const matching = new MatchingService(repo, routingThatMustNotBeCalled);
+  const matching = new MatchingService({ repo, routing: routingThatMustNotBeCalled });
 
   repo.createRideRequest({
     riderId: rider.id,
@@ -448,7 +460,7 @@ test("no match when OSRM detour exceeds driver's tolerance", async () => {
   const rider = seedRider(repo, 7);
 
   // Detour of 7 min — exceeds default tolerance of 5 min
-  const matching = new MatchingService(repo, makeRouting(7 * 60));
+  const matching = new MatchingService({ repo, routing: makeRouting(7 * 60) });
 
   repo.createRideRequest({
     riderId: rider.id,

@@ -27,7 +27,7 @@ export class SessionManager {
     return this.sessions.get(telegramId)!;
   }
 
-  setScene(telegramId: number, scene: BotScene, data?: Record<string, any>): void {
+  setScene({ telegramId, scene, data }: SetSceneArgs): void {
     const session = this.get(telegramId);
     const previousScene = session.scene;
     session.scene = scene;
@@ -81,4 +81,10 @@ export class SessionManager {
   isInRelay(telegramId: number): boolean {
     return this.get(telegramId).scene === "in_ride_relay";
   }
+}
+
+export interface SetSceneArgs {
+  telegramId: number;
+  scene: BotScene;
+  data?: Record<string, any>;
 }

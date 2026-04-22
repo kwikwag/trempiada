@@ -15,7 +15,16 @@ function minutesFromNow(n: number): string {
 
 function seedDriver(repo: Repository) {
   const user = repo.createUser(10_001, "Driver");
-  const car = repo.addCar(user.id, "12-345-67", "Toyota", "Corolla", "White", 2020, 4, null);
+  const car = repo.addCar({
+    userId: user.id,
+    plateNumber: "12-345-67",
+    make: "Toyota",
+    model: "Corolla",
+    color: "White",
+    year: 2020,
+    seatCount: 4,
+    photoFileId: null,
+  });
   return { user, car };
 }
 
@@ -69,8 +78,14 @@ test("hardDeleteUserByTelegramId removes the user's data and cancels linked acti
   repo.updateMatchStatus(match.id, "completed");
   repo.updateRideStatus(ride.id, "completed");
   repo.updateRequestStatus(request.id, "completed");
-  repo.addRating(match.id, rider.id, driver.id, 5, null);
-  repo.createDispute(match.id, rider.id, "test dispute");
+  repo.addRating({
+    matchId: match.id,
+    raterId: rider.id,
+    ratedId: driver.id,
+    score: 5,
+    comment: null,
+  });
+  repo.createDispute({ matchId: match.id, reporterId: rider.id, description: "test dispute" });
 
   assert.equal(devRepo.hardDeleteUserByTelegramId(driver.telegramId), true);
 

@@ -13,7 +13,16 @@ function minutesFromNow(n: number): string {
 
 function seedDriver(repo: Repository, n = 1) {
   const user = repo.createUser(10_000 + n, `Driver${n}`);
-  const car = repo.addCar(user.id, `12-345-${n}${n}`, "Toyota", "Corolla", "White", 2020, 4, null);
+  const car = repo.addCar({
+    userId: user.id,
+    plateNumber: `12-345-${n}${n}`,
+    make: "Toyota",
+    model: "Corolla",
+    color: "White",
+    year: 2020,
+    seatCount: 4,
+    photoFileId: null,
+  });
   return { user, car };
 }
 
@@ -21,7 +30,15 @@ function seedRider(repo: Repository, n = 1) {
   return repo.createUser(20_000 + n, `Rider${n}`);
 }
 
-function createRide(repo: Repository, driverId: number, carId: number) {
+function createRide({
+  repo,
+  driverId,
+  carId,
+}: {
+  repo: Repository;
+  driverId: number;
+  carId: number;
+}) {
   return repo.createRide({
     driverId,
     carId,
@@ -57,7 +74,7 @@ test("open ride helpers return and cancel only the driver's open ride", () => {
   const repo = makeRepo();
   const { user: driver, car } = seedDriver(repo);
 
-  const ride = createRide(repo, driver.id, car.id);
+  const ride = createRide({ repo, driverId: driver.id, carId: car.id });
   assert.equal(repo.getOpenRideForDriver(driver.id)?.id, ride.id);
   assert.equal(repo.getActiveRideForDriver(driver.id)?.id, ride.id);
 
@@ -87,7 +104,7 @@ test("open helpers ignore matched rides and requests once a match exists", () =>
   const repo = makeRepo();
   const { user: driver, car } = seedDriver(repo);
   const rider = seedRider(repo);
-  const ride = createRide(repo, driver.id, car.id);
+  const ride = createRide({ repo, driverId: driver.id, carId: car.id });
   const request = createRequest(repo, rider.id);
 
   const match = repo.createMatch({
