@@ -2,12 +2,10 @@ import { Markup } from "telegraf";
 import type { Telegraf, Context } from "telegraf";
 import type { BotDeps } from "../deps";
 import { showMainMenu } from "../ui";
-import { formatCarInfo, formatTrustProfile } from "../../utils";
-
-// Imported lazily to avoid circular deps — registration completes and may hand off to drive posting
-import type { BotDeps as _Deps } from "../deps";
+import { formatCarInfo } from "../../utils";
 
 type StartDriveFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
+type StartRideFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
 type CreateWazeDrive = (args: {
   ctx: Context;
   telegramId: number;
@@ -18,35 +16,30 @@ export interface RegisterRegistrationHandlersArgs {
   bot: Telegraf;
   deps: BotDeps;
   startDrivePostingFlow: StartDriveFlow;
+  startRideRequestFlow: StartRideFlow;
   createWazeDriveFromUrl: CreateWazeDrive;
-}
-
-export interface HandleRegistrationMessageArgs {
-  ctx: Context;
-  deps: BotDeps;
-  finishRegistrationCb: (args: { ctx: Context; telegramId: number }) => Promise<void>;
 }
 
 export function registerRegistrationHandlers({
   bot,
   deps,
   startDrivePostingFlow,
+  startRideRequestFlow,
   createWazeDriveFromUrl,
-}: RegisterRegistrationHandlersArgs): void {
-  const { repo, sessions, logger } = deps;
+}: RegisterRegistrationHandlersArgs): { handleMessage: (ctx: Context) => Promise<boolean> } {
+  const { repo, sessions, logger, carRecognition } = deps;
 
-  async function finishRegistration(ctx: Context, telegramId: number): Promise<void> {
+  async function afterProfileComplete(ctx: Context, telegramId: number): Promise<void> {
     const session = sessions.get(telegramId);
-    if (!session.userId) return;
-    const user = repo.getUserById(session.userId)!;
-    const verifications = repo.getVerifications(session.userId);
-    const profile = formatTrustProfile({ user, verifications });
+    const pendingAction = session.data.pendingAction as string | undefined;
+    const user = repo.getUserById(session.userId!)!;
 
-    await ctx.reply(`You're all set! 🎉\n\nYour trust profile:\n${profile}`);
-    await showMainMenu(ctx, user.firstName);
-
-    if (session.data.pendingWazeDriveUrl) {
-      await createWazeDriveFromUrl({ ctx, telegramId, url: session.data.pendingWazeDriveUrl });
+    if (pendingAction === "drive") {
+      await startDrivePostingFlow({ ctx, telegramId });
+    } else if (pendingAction === "ride") {
+      await startRideRequestFlow({ ctx, telegramId });
+    } else {
+      await showMainMenu(ctx, user.firstName);
     }
   }
 
@@ -55,46 +48,43 @@ export function registerRegistrationHandlers({
     bot.action(`gender_${g}`, async (ctx) => {
       await ctx.answerCbQuery();
       const telegramId = ctx.from!.id;
-      sessions.updateData(telegramId, { gender: g });
+      const session = sessions.get(telegramId);
+      if (!session.userId) return;
 
-      // Try to use their existing Telegram profile photo — avoids asking for a selfie
-      try {
-        const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
-        if (profilePhotos.total_count > 0) {
-          const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
-          const firstName = sessions.get(telegramId).data.firstName;
+      repo.updateUserProfile(session.userId, { gender: g });
+      logger.info("profile_gender_set", { telegramId, userId: session.userId, gender: g });
 
-          const user = repo.createUser(telegramId, firstName);
-          repo.updateUserProfile(user.id, {
-            gender: g,
-            photoFileId: largest.file_id,
-            phone: String(telegramId),
-          });
-          repo.addVerification({ userId: user.id, type: "phone" });
-          repo.addVerification({ userId: user.id, type: "photo" });
-
-          sessions.setUserId(telegramId, user.id);
-          sessions.setScene({ telegramId, scene: "idle" });
-          logger.info("user_registered", {
-            telegramId,
-            userId: user.id,
-            profilePhotoSource: "telegram_profile",
-          });
-
-          await ctx.editMessageText(`Got it! 👍`);
-          await finishRegistration(ctx, telegramId);
-          return;
+      // Try Telegram profile photo if not yet set
+      const user = repo.getUserById(session.userId)!;
+      if (!user.photoFileId) {
+        try {
+          const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
+          if (profilePhotos.total_count > 0) {
+            const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
+            repo.updateUserProfile(session.userId, { photoFileId: largest.file_id });
+            const verifications = repo.getVerifications(session.userId);
+            if (!verifications.find((v) => v.type === "photo")) {
+              repo.addVerification({ userId: session.userId, type: "photo" });
+            }
+            logger.info("profile_photo_obtained_telegram", { telegramId, userId: session.userId });
+            await ctx.editMessageText("Got it! 👍");
+            await afterProfileComplete(ctx, telegramId);
+            return;
+          }
+        } catch {
+          // fall through to manual photo upload
         }
-      } catch {
-        // Fall through to manual photo upload
+
+        sessions.setScene({ telegramId, scene: "registration_photo", data: session.data });
+        await ctx.editMessageText(
+          "Got it.\n\nNow, send me a photo of yourself. " +
+            "This helps the other party recognize you.",
+        );
+        return;
       }
 
-      sessions.setScene({ telegramId, scene: "registration_photo" });
-      logger.info("registration_profile_photo_needed", { telegramId });
-      await ctx.editMessageText(
-        `Got it.\n\nNow, send me a photo of yourself. ` +
-          `This helps the other party recognize you.`,
-      );
+      await ctx.editMessageText("Got it! 👍");
+      await afterProfileComplete(ctx, telegramId);
     });
   }
 
@@ -175,180 +165,142 @@ export function registerRegistrationHandlers({
       await ctx.editMessageText(carEditPrompts[field], { parse_mode: "Markdown" });
     });
   }
-}
 
-export async function handleRegistrationMessage({
-  ctx,
-  deps,
-  finishRegistrationCb,
-}: HandleRegistrationMessageArgs): Promise<boolean> {
-  const telegramId = ctx.from!.id;
-  const { repo, sessions, carRecognition, logger } = deps;
-  const session = sessions.get(telegramId);
-  const msg = (ctx as any).message;
+  async function handleMessage(ctx: Context): Promise<boolean> {
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    const msg = (ctx as any).message;
 
-  // --- Registration: name ---
-  if (session.scene === "registration_name" && "text" in msg) {
-    const firstName = msg.text.trim();
-    if (!firstName || firstName.length > 50) {
-      await ctx.reply("Please enter a valid first name.");
+    // --- Profile: photo (manual upload when no Telegram profile photo) ---
+    if (session.scene === "registration_photo" && "photo" in msg) {
+      const photos = msg.photo;
+      const largest = photos[photos.length - 1];
+      if (!session.userId) return true;
+
+      repo.updateUserProfile(session.userId, { photoFileId: largest.file_id });
+      const verifications = repo.getVerifications(session.userId);
+      if (!verifications.find((v) => v.type === "photo")) {
+        repo.addVerification({ userId: session.userId, type: "photo" });
+      }
+      sessions.setScene({ telegramId, scene: "idle" });
+      logger.info("profile_photo_uploaded", { telegramId, userId: session.userId });
+
+      await afterProfileComplete(ctx, telegramId);
       return true;
     }
 
-    sessions.updateData(telegramId, { firstName });
-    sessions.setScene({ telegramId, scene: "registration_gender" });
-    logger.info("registration_name_received", {
-      telegramId,
-      firstNameLength: firstName.length,
-    });
+    if (session.scene === "registration_photo" && !("photo" in msg)) {
+      await ctx.reply("Please send a photo of yourself (just a normal selfie).");
+      return true;
+    }
 
-    await ctx.reply(
-      `Nice to meet you, ${firstName}!\n\nWhat's your gender?`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Male", "gender_male")],
-        [Markup.button.callback("Female", "gender_female")],
-        [Markup.button.callback("Other", "gender_other")],
-      ]),
-    );
-    return true;
-  }
+    // --- Car registration: photo ---
+    if (session.scene === "car_registration_photo" && "photo" in msg) {
+      const photos = msg.photo;
+      const largest = photos[photos.length - 1];
 
-  // --- Registration: photo (fallback if no Telegram profile photo) ---
-  if (session.scene === "registration_photo" && "photo" in msg) {
-    const photos = msg.photo;
-    const largest = photos[photos.length - 1];
-
-    const user = repo.createUser(telegramId, session.data.firstName);
-    repo.updateUserProfile(user.id, {
-      gender: session.data.gender,
-      photoFileId: largest.file_id,
-      phone: ctx.from?.id ? String(ctx.from.id) : undefined,
-    });
-
-    repo.addVerification({ userId: user.id, type: "phone" });
-    repo.addVerification({ userId: user.id, type: "photo" });
-
-    sessions.setUserId(telegramId, user.id);
-    sessions.setScene({ telegramId, scene: "idle" });
-    logger.info("user_registered", {
-      telegramId,
-      userId: user.id,
-      profilePhotoSource: "manual_upload",
-    });
-
-    await finishRegistrationCb({ ctx, telegramId });
-    return true;
-  }
-
-  if (session.scene === "registration_photo" && !("photo" in msg)) {
-    await ctx.reply("Please send a photo of yourself (just a normal selfie).");
-    return true;
-  }
-
-  // --- Car registration: photo ---
-  if (session.scene === "car_registration_photo" && "photo" in msg) {
-    const photos = msg.photo;
-    const largest = photos[photos.length - 1];
-
-    await ctx.reply("Analyzing your car photo... 🔍");
-    logger.info("car_photo_received", {
-      telegramId,
-      userId: session.userId,
-    });
-
-    const carDetails = await carRecognition.extractFromTelegramPhoto(largest.file_id);
-
-    if (!carDetails) {
-      logger.warn("car_photo_analysis_failed", {
+      await ctx.reply("Analyzing your car photo... 🔍");
+      logger.info("car_photo_received", {
         telegramId,
         userId: session.userId,
       });
+
+      const carDetails = await carRecognition.extractFromTelegramPhoto(largest.file_id);
+
+      if (!carDetails) {
+        logger.warn("car_photo_analysis_failed", {
+          telegramId,
+          userId: session.userId,
+        });
+        await ctx.reply(
+          "I couldn't read the car details from that photo. " +
+            "Please try again with a clearer shot of the rear of the car, " +
+            "with the license plate visible.",
+        );
+        return true;
+      }
+
+      sessions.updateData(telegramId, { carDetails, carPhotoFileId: largest.file_id });
+      sessions.setScene({ telegramId, scene: "car_registration_confirm" });
+      logger.info("car_photo_analysis_completed", {
+        telegramId,
+        userId: session.userId,
+        seatCount: carDetails.seatCount,
+        year: carDetails.year,
+        hasPlate: carDetails.plateNumber !== "unknown",
+      });
+
       await ctx.reply(
-        "I couldn't read the car details from that photo. " +
-          "Please try again with a clearer shot of the rear of the car, " +
-          "with the license plate visible.",
+        `Got it! Here's what I found:\n\n` +
+          `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
+          (carDetails.year ? `, ${carDetails.year}` : "") +
+          `\n` +
+          `🔢 Plate: ${carDetails.plateNumber}\n` +
+          `👥 Seats: ${carDetails.seatCount}\n\n` +
+          `Does this look right?`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
+          [Markup.button.callback("Fix something", "car_confirm_edit")],
+          [Markup.button.callback("Try another photo", "car_confirm_retry")],
+        ]),
       );
       return true;
     }
 
-    sessions.updateData(telegramId, { carDetails, carPhotoFileId: largest.file_id });
-    sessions.setScene({ telegramId, scene: "car_registration_confirm" });
-    logger.info("car_photo_analysis_completed", {
-      telegramId,
-      userId: session.userId,
-      seatCount: carDetails.seatCount,
-      year: carDetails.year,
-      hasPlate: carDetails.plateNumber !== "unknown",
-    });
+    // --- Car field editing ---
+    if (session.scene === "car_edit" && "text" in msg) {
+      const field = session.data.carEditField as string;
+      const carDetails = { ...session.data.carDetails };
+      const text = msg.text.trim();
 
-    await ctx.reply(
-      `Got it! Here's what I found:\n\n` +
-        `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
-        (carDetails.year ? `, ${carDetails.year}` : "") +
-        `\n` +
-        `🔢 Plate: ${carDetails.plateNumber}\n` +
-        `👥 Seats: ${carDetails.seatCount}\n\n` +
-        `Does this look right?`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
-        [Markup.button.callback("Fix something", "car_confirm_edit")],
-        [Markup.button.callback("Try another photo", "car_confirm_retry")],
-      ]),
-    );
-    return true;
-  }
-
-  // --- Car field editing ---
-  if (session.scene === "car_edit" && "text" in msg) {
-    const field = session.data.carEditField as string;
-    const carDetails = { ...session.data.carDetails };
-    const text = msg.text.trim();
-
-    if (field === "plate") {
-      carDetails.plateNumber = text;
-    } else if (field === "seats") {
-      const seats = parseInt(text, 10);
-      if (isNaN(seats) || seats < 1 || seats > 8) {
-        await ctx.reply("Please enter a number between 1 and 8.");
-        return true;
+      if (field === "plate") {
+        carDetails.plateNumber = text;
+      } else if (field === "seats") {
+        const seats = parseInt(text, 10);
+        if (isNaN(seats) || seats < 1 || seats > 8) {
+          await ctx.reply("Please enter a number between 1 and 8.");
+          return true;
+        }
+        carDetails.seatCount = seats;
+      } else if (field === "make") {
+        const parts = text.split(" ");
+        carDetails.make = parts[0];
+        if (parts.length > 1) carDetails.model = parts.slice(1).join(" ");
+      } else if (field === "year") {
+        const year = parseInt(text, 10);
+        if (isNaN(year) || year < 1990 || year > new Date().getFullYear() + 1) {
+          await ctx.reply("Please enter a valid year.");
+          return true;
+        }
+        carDetails.year = year;
       }
-      carDetails.seatCount = seats;
-    } else if (field === "make") {
-      const parts = text.split(" ");
-      carDetails.make = parts[0];
-      if (parts.length > 1) carDetails.model = parts.slice(1).join(" ");
-    } else if (field === "year") {
-      const year = parseInt(text, 10);
-      if (isNaN(year) || year < 1990 || year > new Date().getFullYear() + 1) {
-        await ctx.reply("Please enter a valid year.");
-        return true;
-      }
-      carDetails.year = year;
+
+      sessions.updateData(telegramId, { carDetails, carEditField: undefined });
+      sessions.setScene({ telegramId, scene: "car_registration_confirm" });
+      logger.info("car_details_edited", {
+        telegramId,
+        userId: session.userId,
+        field,
+      });
+
+      await ctx.reply(
+        `Updated! Here's what I have:\n\n` +
+          `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
+          (carDetails.year ? `, ${carDetails.year}` : "") +
+          `\n` +
+          `🔢 Plate: ${carDetails.plateNumber}\n` +
+          `👥 Seats: ${carDetails.seatCount}\n\nDoes this look right?`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
+          [Markup.button.callback("Fix something", "car_confirm_edit")],
+          [Markup.button.callback("Try another photo", "car_confirm_retry")],
+        ]),
+      );
+      return true;
     }
 
-    sessions.updateData(telegramId, { carDetails, carEditField: undefined });
-    sessions.setScene({ telegramId, scene: "car_registration_confirm" });
-    logger.info("car_details_edited", {
-      telegramId,
-      userId: session.userId,
-      field,
-    });
-
-    await ctx.reply(
-      `Updated! Here's what I have:\n\n` +
-        `🚗 ${carDetails.make} ${carDetails.model}, ${carDetails.color}` +
-        (carDetails.year ? `, ${carDetails.year}` : "") +
-        `\n` +
-        `🔢 Plate: ${carDetails.plateNumber}\n` +
-        `👥 Seats: ${carDetails.seatCount}\n\nDoes this look right?`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
-        [Markup.button.callback("Fix something", "car_confirm_edit")],
-        [Markup.button.callback("Try another photo", "car_confirm_retry")],
-      ]),
-    );
-    return true;
+    return false;
   }
 
-  return false;
+  return { handleMessage };
 }

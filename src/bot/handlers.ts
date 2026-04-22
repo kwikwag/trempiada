@@ -9,18 +9,21 @@ import type { BotDeps } from "./deps";
 import type { NotifyArgs } from "./deps";
 import type { DevRepository } from "../db/dev-repository";
 import { DevService, registerDevHandlers } from "./dev";
-import { registerRegistrationHandlers, handleRegistrationMessage } from "./handlers/registration";
+import { registerRegistrationHandlers } from "./handlers/registration";
 import {
   registerDrivePostingHandlers,
   handleDrivePostingMessage,
   startDrivePostingFlow,
   createWazeDriveFromUrl,
 } from "./handlers/drive-posting";
-import { registerRideRequestHandlers, handleRideRequestMessage } from "./handlers/ride-request";
+import {
+  registerRideRequestHandlers,
+  handleRideRequestMessage,
+  startRideRequestFlow,
+} from "./handlers/ride-request";
 import { registerInRideHandlers, handleInRideMessage } from "./handlers/in-ride";
 import { registerAccountHandlers } from "./handlers/account";
-import { replyNotRegistered, showMainMenu } from "./ui";
-import { formatTrustProfile } from "../utils";
+import { replyNotRegistered } from "./ui";
 import type { Logger, LogContext } from "../logger";
 import { noopLogger } from "../logger";
 
@@ -216,11 +219,12 @@ export function registerHandlers({
 
   registerInRideHandlers(bot, deps);
 
-  registerRegistrationHandlers({
+  const { handleMessage: handleRegistrationMessage } = registerRegistrationHandlers({
     bot,
     deps,
     startDrivePostingFlow: ({ ctx, telegramId }) =>
       startDrivePostingFlow({ ctx, telegramId, deps }),
+    startRideRequestFlow: ({ ctx, telegramId }) => startRideRequestFlow({ ctx, telegramId, deps }),
     createWazeDriveFromUrl: ({ ctx, telegramId, url }) =>
       createWazeDriveFromUrl({ ctx, telegramId, wazeUrl: url, deps }),
   });
@@ -230,34 +234,7 @@ export function registerHandlers({
     if (await handleInRideMessage(ctx, deps)) return;
     if (await handleDrivePostingMessage(ctx, deps)) return;
     if (await handleRideRequestMessage(ctx, deps)) return;
-
-    // finishRegistration callback for use inside handleRegistrationMessage
-    async function finishRegistration({
-      ctx,
-      telegramId,
-    }: {
-      ctx: any;
-      telegramId: number;
-    }): Promise<void> {
-      const session = sessions.get(telegramId);
-      if (!session.userId) return;
-      const user = repo.getUserById(session.userId)!;
-      const verifications = repo.getVerifications(session.userId);
-      const profile = formatTrustProfile({ user, verifications });
-      await ctx.reply(`You're all set! 🎉\n\nYour trust profile:\n${profile}`);
-      await showMainMenu(ctx, user.firstName);
-      if (session.data.pendingWazeDriveUrl) {
-        await createWazeDriveFromUrl({
-          ctx,
-          telegramId,
-          wazeUrl: session.data.pendingWazeDriveUrl,
-          deps,
-        });
-      }
-    }
-
-    if (await handleRegistrationMessage({ ctx, deps, finishRegistrationCb: finishRegistration }))
-      return;
+    if (await handleRegistrationMessage(ctx)) return;
 
     const session = sessions.get(ctx.from!.id);
     if (!session.userId) {

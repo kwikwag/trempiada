@@ -6,9 +6,9 @@ import { WazeService, extractWazeDriveUrl } from "../../services/waze";
 import { DEFAULTS } from "../../types";
 import type { Car, Ride } from "../../types";
 import { formatTrustProfile, formatDuration, parseTimeToday } from "../../utils";
+import { ensureProfileComplete } from "./profile";
 import {
   showMainMenu,
-  replyNotRegistered,
   rideReviewContent,
   replyWithRideReview,
   resolveLocation,
@@ -615,23 +615,27 @@ export async function ensureDriverReady({
     const existing = repo.getUserByTelegramId(telegramId);
     if (existing) {
       sessions.setUserId(telegramId, existing.id);
-    } else if (pendingData.pendingWazeDriveUrl) {
-      deps.logger.info("driver_flow_needs_registration", { telegramId });
-      sessions.setScene({ telegramId, scene: "registration_name", data: pendingData });
-      await ctx.reply(
-        "I can set up that Waze drive for you. First, let's create your account.\n\n" +
-          "What's your first name? (This is what others will see.)",
-      );
-      return null;
     } else {
-      deps.logger.info("driver_flow_blocked_unregistered", { telegramId });
-      await replyNotRegistered(ctx);
-      return null;
+      // Auto-create from Telegram data so the drive flow can proceed
+      const telegramName = ctx.from!.first_name;
+      const newUser = repo.createUser(telegramId, telegramName);
+      repo.addVerification({ userId: newUser.id, type: "phone" });
+      sessions.setUserId(telegramId, newUser.id);
+      deps.logger.info("user_auto_created_for_drive", { telegramId, userId: newUser.id });
     }
   }
 
   const readySession = sessions.get(telegramId);
   if (!readySession.userId) return null;
+
+  // Ensure gender + photo are set before proceeding (deferred profile completion)
+  const profileReady = await ensureProfileComplete({
+    ctx,
+    telegramId,
+    deps,
+    pendingAction: "drive",
+  });
+  if (!profileReady) return null;
 
   const user = repo.getUserById(readySession.userId);
   if (!user || user.isSuspended) {

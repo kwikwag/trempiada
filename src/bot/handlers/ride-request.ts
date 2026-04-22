@@ -2,7 +2,8 @@ import { Markup } from "telegraf";
 import type { Telegraf, Context } from "telegraf";
 import type { BotDeps } from "../deps";
 import type { RideRequest } from "../../types";
-import { mainMenuKeyboard, replyNotRegistered, resolveLocation, statusKeyboard } from "../ui";
+import { mainMenuKeyboard, resolveLocation, statusKeyboard } from "../ui";
+import { ensureProfileComplete } from "./profile";
 
 const MATCHED_REQUEST_EDIT_BLOCK_MESSAGE =
   "You're already matched for a ride. If you want to change anything, cancel the ride first.";
@@ -548,17 +549,37 @@ export async function startRideRequestFlow({
   const session = sessions.get(telegramId);
 
   if (!session.userId) {
-    logger.info("request_flow_blocked_unregistered", { telegramId });
-    await replyNotRegistered(ctx);
-    return;
+    const existing = repo.getUserByTelegramId(telegramId);
+    if (existing) {
+      sessions.setUserId(telegramId, existing.id);
+    } else {
+      // Auto-create from Telegram data so the ride flow can proceed
+      const telegramName = ctx.from!.first_name;
+      const newUser = repo.createUser(telegramId, telegramName);
+      repo.addVerification({ userId: newUser.id, type: "phone" });
+      sessions.setUserId(telegramId, newUser.id);
+      logger.info("user_auto_created_for_ride", { telegramId, userId: newUser.id });
+    }
   }
 
-  const activeMatch = repo.getActiveMatchForUser(session.userId);
+  // Ensure gender + photo are set before proceeding (deferred profile completion)
+  const profileReady = await ensureProfileComplete({
+    ctx,
+    telegramId,
+    deps,
+    pendingAction: "ride",
+  });
+  if (!profileReady) return;
+
+  const { userId } = sessions.get(telegramId);
+  if (!userId) return;
+
+  const activeMatch = repo.getActiveMatchForUser(userId);
   if (activeMatch) {
     sessions.setScene({ telegramId, scene: "idle" });
     logger.info("request_flow_blocked_active_match", {
       telegramId,
-      userId: session.userId,
+      userId,
       matchId: activeMatch.id,
     });
     await ctx.reply(
@@ -568,14 +589,10 @@ export async function startRideRequestFlow({
     return;
   }
 
-  const openRide = repo.getOpenRideForDriver(session.userId);
+  const openRide = repo.getOpenRideForDriver(userId);
   if (openRide) {
     sessions.setScene({ telegramId, scene: "idle" });
-    logger.info("request_flow_blocked_open_ride", {
-      telegramId,
-      userId: session.userId,
-      rideId: openRide.id,
-    });
+    logger.info("request_flow_blocked_open_ride", { telegramId, userId, rideId: openRide.id });
     await ctx.reply(
       "You're currently offering a ride. To request a ride as a rider, cancel that offer first.",
       Markup.inlineKeyboard([
@@ -587,12 +604,12 @@ export async function startRideRequestFlow({
     return;
   }
 
-  const openRequest = repo.getOpenRideRequestForRider(session.userId);
+  const openRequest = repo.getOpenRideRequestForRider(userId);
   if (openRequest) {
     sessions.setScene({ telegramId, scene: "idle" });
     logger.info("request_flow_blocked_open_request", {
       telegramId,
-      userId: session.userId,
+      userId,
       requestId: openRequest.id,
     });
     await ctx.reply(
@@ -607,11 +624,7 @@ export async function startRideRequestFlow({
   }
 
   sessions.setScene({ telegramId, scene: "request_pickup", data: {} });
-  logger.info("request_flow_started", {
-    telegramId,
-    userId: session.userId,
-    source,
-  });
+  logger.info("request_flow_started", { telegramId, userId, source });
   await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
 }
 

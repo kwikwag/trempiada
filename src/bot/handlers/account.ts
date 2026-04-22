@@ -34,17 +34,33 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    sessions.setScene({ telegramId, scene: "registration_name", data: {} });
-    logger.info("user_started", {
+    // Auto-create account from Telegram data — no registration steps needed up front
+    const telegramName = ctx.from!.first_name;
+    const newUser = repo.createUser(telegramId, telegramName);
+    repo.addVerification({ userId: newUser.id, type: "phone" });
+
+    try {
+      const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
+      if (profilePhotos.total_count > 0) {
+        const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
+        repo.updateUserProfile(newUser.id, { photoFileId: largest.file_id });
+        repo.addVerification({ userId: newUser.id, type: "photo" });
+      }
+    } catch {
+      // no profile photo available
+    }
+
+    sessions.setUserId(telegramId, newUser.id);
+    sessions.setScene({ telegramId, scene: "idle" });
+    logger.info("user_registered", {
       telegramId,
-      existingUser: false,
+      userId: newUser.id,
     });
     await ctx.reply(
-      `Hey! 👋 Welcome to TrempiadaBot.\n\n` +
-        `We connect drivers with people looking for a ride along their route.\n\n` +
-        `Let's get you set up — it takes about 30 seconds.\n\n` +
-        `What's your first name? (This is what others will see.)`,
+      `Hey ${telegramName}! 👋 Welcome to TrempiadaBot.\n\n` +
+        `We connect drivers with people looking for a ride along their route.`,
     );
+    await showMainMenu(ctx, telegramName);
   });
 
   bot.command("trust", async (ctx) => {
@@ -181,8 +197,30 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
   bot.action("menu_start", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    sessions.setScene({ telegramId, scene: "registration_name", data: {} });
-    await ctx.reply("What's your first name? (This is what others will see.)");
+    const session = sessions.get(telegramId);
+
+    if (!session.userId) {
+      const existing = repo.getUserByTelegramId(telegramId);
+      if (existing) {
+        sessions.setUserId(telegramId, existing.id);
+        sessions.setScene({ telegramId, scene: "idle" });
+        await showMainMenu(ctx, existing.firstName);
+        return;
+      }
+      // Auto-create from Telegram data
+      const telegramName = ctx.from!.first_name;
+      const newUser = repo.createUser(telegramId, telegramName);
+      repo.addVerification({ userId: newUser.id, type: "phone" });
+      sessions.setUserId(telegramId, newUser.id);
+      sessions.setScene({ telegramId, scene: "idle" });
+      logger.info("user_registered_via_menu_start", { telegramId, userId: newUser.id });
+      await showMainMenu(ctx, telegramName);
+      return;
+    }
+
+    const user = repo.getUserById(session.userId)!;
+    sessions.setScene({ telegramId, scene: "idle" });
+    await showMainMenu(ctx, user.firstName);
   });
 
   bot.action("sos_button", async (ctx) => {

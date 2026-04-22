@@ -153,7 +153,6 @@ export interface Dispute {
 
 export type BotScene =
   | "idle"
-  | "registration_name"
   | "registration_gender"
   | "registration_photo"
   | "registration_verification" // Must complete at least one verification

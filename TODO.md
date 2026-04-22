@@ -3,7 +3,7 @@
 - [x] Geocoding service (text addresses → coordinates)
 - [x] Waze link parsing for route import
 - [x] Button-first UX (inline keyboards + persistent SOS keyboard during rides)
-- [ ] Profile photo flow: after gender selection, fetch Telegram profile photo automatically; if none exists, offer to upload one. Either way, send the photo to a face-crop service — if no face is detected, loop back and ask again. Show the cropped face and ask the user to confirm it's them, change the photo, or skip. If they skip, warn that having no photo reduces their trust score and makes drivers/riders less likely to accept them, then let them proceed or backtrack. Photo is optional end-to-end. Photo is stored as a Telegram file ID and only shared with the matched party (driver↔rider) when a match is confirmed, not before.
+- [ ] Profile photo quality: send the photo to a face-crop service — if no face is detected, loop back and ask again. Show the cropped face and ask the user to confirm it's them, change the photo, or skip. If they skip, warn that having no photo reduces their trust score and makes drivers/riders less likely to accept them. Photo is stored as a Telegram file ID and only shared with the matched party (driver↔rider) when a match is confirmed, not before.
 - [ ] OAuth flows for social verification (Facebook, LinkedIn, Google)
 - [ ] "Share ride" web page for safety
 - [ ] Admin dashboard for dispute resolution and account suspension management
