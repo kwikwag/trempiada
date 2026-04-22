@@ -3,6 +3,8 @@ import type { RoutingService } from "./routing";
 import type { Ride, RideRequest, GeoPoint, DetourResult } from "../types";
 import { POINTS, DEFAULTS } from "../types";
 import { haversineKm, generateCode } from "../utils";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 
 export interface MatchCandidate {
   request: RideRequest;
@@ -28,6 +30,7 @@ export class MatchingService {
   constructor(
     private repo: Repository,
     private routing: RoutingService,
+    private logger: Logger = noopLogger,
   ) {}
 
   /**
@@ -35,8 +38,18 @@ export class MatchingService {
    * Returns candidates sorted by detour cost (ascending).
    */
   async findRidersForDriver(ride: Ride): Promise<MatchCandidate[]> {
+    const start = Date.now();
     const openRequests = this.repo.getOpenRequests();
     const candidates: MatchCandidate[] = [];
+    const rejected = {
+      sameUser: 0,
+      timeWindow: 0,
+      roughDistance: 0,
+      minDistance: 0,
+      samePairCooldown: 0,
+      noRoute: 0,
+      maxDetour: 0,
+    };
 
     const driverOrigin: GeoPoint = { lat: ride.originLat, lng: ride.originLng };
     const driverDest: GeoPoint = { lat: ride.destLat, lng: ride.destLng };
@@ -44,14 +57,20 @@ export class MatchingService {
 
     for (const req of openRequests) {
       // Skip if same user
-      if (req.riderId === ride.driverId) continue;
+      if (req.riderId === ride.driverId) {
+        rejected.sameUser++;
+        continue;
+      }
 
       // --- Quick filters ---
 
       // Time window check
       const earliest = new Date(req.earliestDeparture);
       const latest = new Date(req.latestDeparture);
-      if (departureDate < earliest || departureDate > latest) continue;
+      if (departureDate < earliest || departureDate > latest) {
+        rejected.timeWindow++;
+        continue;
+      }
 
       // Rough distance check: pickup should be vaguely near the route
       // Use a generous radius since the actual detour calc is what matters
@@ -66,7 +85,10 @@ export class MatchingService {
 
       // If pickup is farther from both endpoints than the route length,
       // it's almost certainly not along the way
-      if (pickupToOrigin > routeLength && pickupToDest > routeLength) continue;
+      if (pickupToOrigin > routeLength && pickupToDest > routeLength) {
+        rejected.roughDistance++;
+        continue;
+      }
 
       // Minimum ride distance (anti-gaming)
       const rideDistance = haversineKm(
@@ -75,7 +97,10 @@ export class MatchingService {
         req.dropoffLat,
         req.dropoffLng,
       );
-      if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) continue;
+      if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) {
+        rejected.minDistance++;
+        continue;
+      }
 
       // Same-pair cooldown (anti-gaming)
       const recentCount = this.repo.getRecentSamePairCount(
@@ -83,7 +108,10 @@ export class MatchingService {
         req.riderId,
         POINTS.SAME_PAIR_COOLDOWN_HOURS,
       );
-      if (recentCount > 0) continue;
+      if (recentCount > 0) {
+        rejected.samePairCooldown++;
+        continue;
+      }
 
       // --- Actual detour calculation ---
       const pickup: GeoPoint = { lat: req.pickupLat, lng: req.pickupLng };
@@ -91,11 +119,17 @@ export class MatchingService {
 
       const detour = await this.routing.calculateDetour(driverOrigin, driverDest, pickup, dropoff);
 
-      if (!detour) continue;
+      if (!detour) {
+        rejected.noRoute++;
+        continue;
+      }
 
       // Check detour against driver's tolerance
       const maxDetourSeconds = ride.maxDetourMinutes * 60;
-      if (detour.addedSeconds > maxDetourSeconds) continue;
+      if (detour.addedSeconds > maxDetourSeconds) {
+        rejected.maxDetour++;
+        continue;
+      }
 
       candidates.push({
         request: req,
@@ -107,6 +141,15 @@ export class MatchingService {
     // Sort by detour cost ascending (least inconvenience first)
     candidates.sort((a, b) => a.detour.addedSeconds - b.detour.addedSeconds);
 
+    this.logger.info("matching_riders_for_driver_completed", {
+      durationMs: Date.now() - start,
+      rideId: ride.id,
+      driverId: ride.driverId,
+      openRequests: openRequests.length,
+      candidateCount: candidates.length,
+      rejected,
+    });
+
     return candidates;
   }
 
@@ -115,8 +158,19 @@ export class MatchingService {
    * Same logic, reversed perspective.
    */
   async findDriversForRider(request: RideRequest): Promise<{ ride: Ride; detour: DetourResult }[]> {
+    const start = Date.now();
     const openRides = this.repo.getOpenRides();
     const results: { ride: Ride; detour: DetourResult }[] = [];
+    const rejected = {
+      sameUser: 0,
+      noSeats: 0,
+      timeWindow: 0,
+      roughDistance: 0,
+      minDistance: 0,
+      samePairCooldown: 0,
+      noRoute: 0,
+      maxDetour: 0,
+    };
 
     const earliest = new Date(request.earliestDeparture);
     const latest = new Date(request.latestDeparture);
@@ -124,11 +178,20 @@ export class MatchingService {
     const dropoff: GeoPoint = { lat: request.dropoffLat, lng: request.dropoffLng };
 
     for (const ride of openRides) {
-      if (ride.driverId === request.riderId) continue;
-      if (ride.availableSeats < 1) continue;
+      if (ride.driverId === request.riderId) {
+        rejected.sameUser++;
+        continue;
+      }
+      if (ride.availableSeats < 1) {
+        rejected.noSeats++;
+        continue;
+      }
 
       const departureDate = new Date(ride.departureTime);
-      if (departureDate < earliest || departureDate > latest) continue;
+      if (departureDate < earliest || departureDate > latest) {
+        rejected.timeWindow++;
+        continue;
+      }
 
       // Rough proximity check
       const routeLength = haversineKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
@@ -138,7 +201,10 @@ export class MatchingService {
         ride.originLat,
         ride.originLng,
       );
-      if (pickupToOrigin > routeLength) continue;
+      if (pickupToOrigin > routeLength) {
+        rejected.roughDistance++;
+        continue;
+      }
 
       // Min distance
       const rideDistance = haversineKm(
@@ -147,7 +213,10 @@ export class MatchingService {
         request.dropoffLat,
         request.dropoffLng,
       );
-      if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) continue;
+      if (rideDistance < POINTS.MIN_RIDE_DISTANCE_KM) {
+        rejected.minDistance++;
+        continue;
+      }
 
       // Same-pair cooldown
       const recentCount = this.repo.getRecentSamePairCount(
@@ -155,21 +224,38 @@ export class MatchingService {
         request.riderId,
         POINTS.SAME_PAIR_COOLDOWN_HOURS,
       );
-      if (recentCount > 0) continue;
+      if (recentCount > 0) {
+        rejected.samePairCooldown++;
+        continue;
+      }
 
       const driverOrigin: GeoPoint = { lat: ride.originLat, lng: ride.originLng };
       const driverDest: GeoPoint = { lat: ride.destLat, lng: ride.destLng };
 
       const detour = await this.routing.calculateDetour(driverOrigin, driverDest, pickup, dropoff);
-      if (!detour) continue;
+      if (!detour) {
+        rejected.noRoute++;
+        continue;
+      }
 
       const maxDetourSeconds = ride.maxDetourMinutes * 60;
-      if (detour.addedSeconds > maxDetourSeconds) continue;
+      if (detour.addedSeconds > maxDetourSeconds) {
+        rejected.maxDetour++;
+        continue;
+      }
 
       results.push({ ride, detour });
     }
 
     results.sort((a, b) => a.detour.addedSeconds - b.detour.addedSeconds);
+    this.logger.info("matching_drivers_for_rider_completed", {
+      durationMs: Date.now() - start,
+      requestId: request.id,
+      riderId: request.riderId,
+      openRides: openRides.length,
+      candidateCount: results.length,
+      rejected,
+    });
     return results;
   }
 
@@ -197,6 +283,15 @@ export class MatchingService {
     // Update statuses
     this.repo.updateRideStatus(ride.id, "matched");
     this.repo.updateRequestStatus(request.id, "matched");
+
+    this.logger.info("match_created", {
+      matchId: match.id,
+      rideId: ride.id,
+      requestId: request.id,
+      driverId: ride.driverId,
+      riderId: request.riderId,
+      detourSeconds: detour.addedSeconds,
+    });
 
     return match;
   }

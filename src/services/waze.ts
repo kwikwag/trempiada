@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 
 export interface WazeDriveInfo {
   originLat: number;
@@ -46,13 +48,20 @@ export function extractWazeSdToken(wazeUrl: string): string | null {
 export class WazeService {
   private baseUrl: string;
 
-  constructor(baseUrl = "https://www.waze.com/il-rtserver/web") {
+  constructor(
+    baseUrl = "https://www.waze.com/il-rtserver/web",
+    private logger: Logger = noopLogger,
+  ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
   async getDriveInfo(wazeUrl: string): Promise<WazeDriveInfo | null> {
+    const start = Date.now();
     const token = extractWazeSdToken(wazeUrl);
-    if (!token) return null;
+    if (!token) {
+      this.logger.warn("waze_import_invalid_url", { durationMs: Date.now() - start });
+      return null;
+    }
 
     const params = new URLSearchParams({
       token,
@@ -62,22 +71,41 @@ export class WazeService {
 
     try {
       const res = await fetch(`${this.baseUrl}/PickUpGetDriverInfo?${params}`);
-      if (!res.ok) return null;
+      if (!res.ok) {
+        this.logger.warn("waze_import_http_failed", {
+          durationMs: Date.now() - start,
+          status: res.status,
+        });
+        return null;
+      }
 
       const parsed = WazeDriverInfoSchema.safeParse(await res.json());
       if (!parsed.success) {
-        console.warn("Waze driver info response validation failed:", parsed.error);
+        this.logger.warn("waze_import_response_invalid", {
+          durationMs: Date.now() - start,
+          err: parsed.error,
+        });
         return null;
       }
 
       const data = parsed.data;
-      if (data.status && data.status !== "ok") return null;
+      if (data.status && data.status !== "ok") {
+        this.logger.warn("waze_import_status_not_ok", {
+          durationMs: Date.now() - start,
+          status: data.status,
+        });
+        return null;
+      }
 
       const destinationParts = [
         data.calculatedLocation.street,
         data.calculatedLocation.city,
       ].filter(Boolean);
 
+      this.logger.info("waze_import_completed", {
+        durationMs: Date.now() - start,
+        etaSeconds: data.eta,
+      });
       return {
         originLat: data.lat,
         originLng: data.lon,
@@ -90,7 +118,10 @@ export class WazeService {
         etaSeconds: data.eta,
       };
     } catch (err) {
-      console.error("Waze drive import error:", err);
+      this.logger.error("waze_import_failed", {
+        durationMs: Date.now() - start,
+        err,
+      });
       return null;
     }
   }

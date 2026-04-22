@@ -4,18 +4,24 @@ import type { BotDeps } from "../deps";
 import { mainMenuKeyboard, resolveLocation } from "../ui";
 
 export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void {
-  const { repo, sessions, notify } = deps;
+  const { repo, sessions, notify, logger } = deps;
 
   bot.command("ride", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
+      logger.info("request_flow_blocked_unregistered", { telegramId });
       await ctx.reply("You need to register first.", mainMenuKeyboard());
       return;
     }
 
     sessions.setScene(telegramId, "request_pickup", {});
+    logger.info("request_flow_started", {
+      telegramId,
+      userId: session.userId,
+      source: "command",
+    });
     await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
   });
 
@@ -25,11 +31,17 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
+      logger.info("request_flow_blocked_unregistered", { telegramId });
       await ctx.reply("You need to register first.");
       return;
     }
 
     sessions.setScene(telegramId, "request_pickup", {});
+    logger.info("request_flow_started", {
+      telegramId,
+      userId: session.userId,
+      source: "menu",
+    });
     await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
   });
 
@@ -60,11 +72,25 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
         earliestDeparture: now.toISOString(),
         latestDeparture: latest.toISOString(),
       });
+      logger.info("ride_request_posted", {
+        telegramId,
+        userId: session.userId,
+        requestId: request.id,
+        windowMinutes,
+        earliestDeparture: request.earliestDeparture,
+        latestDeparture: request.latestDeparture,
+      });
 
       await ctx.editMessageText("Searching for drivers... 🔍");
 
       const candidates = await matching.findDriversForRider(request);
       sessions.reset(telegramId);
+      logger.info("driver_candidates_found", {
+        telegramId,
+        userId: session.userId,
+        requestId: request.id,
+        candidateCount: candidates.length,
+      });
 
       if (candidates.length === 0) {
         await ctx.reply(
@@ -100,13 +126,20 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
           `${notified > 0 ? `I've notified them.` : ""}\n\n` +
           `You'll get a message here when a driver accepts.`,
       );
+      logger.info("drivers_notified_for_request", {
+        telegramId,
+        userId: session.userId,
+        requestId: request.id,
+        candidateCount: candidates.length,
+        notifiedCount: notified,
+      });
     });
   }
 }
 
 export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Promise<boolean> {
   const telegramId = ctx.from!.id;
-  const { sessions, geocoding } = deps;
+  const { sessions, geocoding, logger } = deps;
   const session = sessions.get(telegramId);
   const msg = (ctx as any).message;
 
@@ -130,6 +163,12 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
       pickupLabel: loc.label,
     });
     sessions.setScene(telegramId, "request_dropoff");
+    logger.info("request_pickup_set", {
+      telegramId,
+      userId: session.userId,
+      source: "location" in msg ? "pin" : "text",
+      labelLength: loc.label.length,
+    });
     await ctx.reply(
       "Got it. Where do you need to be dropped off?\n\n📍 Drop a pin or type an address.",
     );
@@ -156,6 +195,12 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
       dropoffLabel: loc.label,
     });
     sessions.setScene(telegramId, "request_time");
+    logger.info("request_dropoff_set", {
+      telegramId,
+      userId: session.userId,
+      source: "location" in msg ? "pin" : "text",
+      labelLength: loc.label.length,
+    });
     await ctx.reply(
       `${session.data.pickupLabel} → ${loc.label}\n\nWhen do you need a ride?`,
       Markup.inlineKeyboard([

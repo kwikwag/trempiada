@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { CarDetails } from "../types";
 import { DEFAULTS } from "../types";
 import type { LicenseLookupService } from "./license-lookup";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 
 const TelegramGetFileSchema = z.object({
   ok: z.boolean(),
@@ -46,6 +48,7 @@ export class CarRecognitionService {
     botToken: string,
     licenseLookup?: LicenseLookupService,
     model = "gemini-2.5-flash-lite",
+    private logger: Logger = noopLogger,
   ) {
     this.geminiApiKey = geminiApiKey;
     this.botToken = botToken;
@@ -69,41 +72,76 @@ export class CarRecognitionService {
    * Download a photo from Telegram and extract car details.
    */
   async extractFromTelegramPhoto(fileId: string): Promise<CarDetails | null> {
+    const start = Date.now();
+    this.logger.info("car_recognition_started", { model: this.model });
     const fileInfo = await this.getTelegramFile(fileId);
-    if (!fileInfo) return null;
+    if (!fileInfo) {
+      this.logger.warn("car_recognition_file_lookup_failed", { durationMs: Date.now() - start });
+      return null;
+    }
 
     const imageBuffer = await this.downloadTelegramFile(fileInfo.file_path);
-    if (!imageBuffer) return null;
+    if (!imageBuffer) {
+      this.logger.warn("car_recognition_photo_download_failed", {
+        durationMs: Date.now() - start,
+      });
+      return null;
+    }
 
-    return this.analyzeCarImage(imageBuffer);
+    const result = await this.analyzeCarImage(imageBuffer);
+    this.logger.info(result ? "car_recognition_completed" : "car_recognition_no_result", {
+      durationMs: Date.now() - start,
+      model: this.model,
+    });
+    return result;
   }
 
   private async getTelegramFile(fileId: string): Promise<{ file_path: string } | null> {
+    const start = Date.now();
     try {
       const res = await fetch(
         `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`,
       );
       const parsed = TelegramGetFileSchema.safeParse(await res.json());
       if (!parsed.success) {
-        console.warn("Telegram getFile: unexpected response shape", parsed.error);
+        this.logger.warn("telegram_get_file_response_invalid", {
+          durationMs: Date.now() - start,
+          err: parsed.error,
+        });
         return null;
       }
-      if (!parsed.data.ok) return null;
+      if (!parsed.data.ok) {
+        this.logger.warn("telegram_get_file_not_ok", { durationMs: Date.now() - start });
+        return null;
+      }
+      this.logger.debug("telegram_get_file_completed", { durationMs: Date.now() - start });
       return parsed.data.result ?? null;
     } catch (err) {
-      console.error("Telegram getFile error:", err);
+      this.logger.error("telegram_get_file_failed", {
+        durationMs: Date.now() - start,
+        err,
+      });
       return null;
     }
   }
 
   private async downloadTelegramFile(filePath: string): Promise<Buffer | null> {
+    const start = Date.now();
     try {
       const url = `https://api.telegram.org/file/bot${this.botToken}/${filePath}`;
       const res = await fetch(url);
       const arrayBuf = await res.arrayBuffer();
-      return Buffer.from(arrayBuf);
+      const buffer = Buffer.from(arrayBuf);
+      this.logger.debug("telegram_photo_downloaded", {
+        durationMs: Date.now() - start,
+        bytes: buffer.byteLength,
+      });
+      return buffer;
     } catch (err) {
-      console.error("Telegram download error:", err);
+      this.logger.error("telegram_photo_download_failed", {
+        durationMs: Date.now() - start,
+        err,
+      });
       return null;
     }
   }
@@ -113,6 +151,7 @@ export class CarRecognitionService {
    * Visible for testing
    */
   async analyzeCarImage(imageBuffer: Buffer): Promise<CarDetails | null> {
+    const start = Date.now();
     const base64 = imageBuffer.toString("base64");
     const mimeType = this.detectImageType(imageBuffer);
 
@@ -161,7 +200,11 @@ If this is not a car photo, set the error field to "not_a_car".`,
 
       const geminiParsed = GeminiResponseSchema.safeParse(await res.json());
       if (!geminiParsed.success) {
-        console.warn("Gemini vision: unexpected response shape", geminiParsed.error);
+        this.logger.warn("gemini_vision_response_invalid", {
+          durationMs: Date.now() - start,
+          model: this.model,
+          err: geminiParsed.error,
+        });
         return null;
       }
       const data = geminiParsed.data;
@@ -173,19 +216,30 @@ If this is not a car photo, set the error field to "not_a_car".`,
         .map((p) => p.text ?? "")
         .join("");
       if (!text) {
-        console.error("Gemini vision: empty response", JSON.stringify(data));
+        this.logger.error("gemini_vision_empty_response", {
+          durationMs: Date.now() - start,
+          model: this.model,
+          candidateCount: data.candidates?.length ?? 0,
+        });
         return null;
       }
 
       const parsed = JSON.parse(text);
 
       if (parsed.error) {
-        console.warn("Car recognition:", parsed.error);
+        this.logger.warn("car_recognition_model_rejected_image", {
+          durationMs: Date.now() - start,
+          model: this.model,
+          reason: parsed.error,
+        });
         return null;
       }
 
       const plateNumber = (parsed.plateNumber || "").replace(/\D/g, "") || "unknown";
       const lookup = this.lookupLicensePlate(plateNumber);
+      this.logger.debug(lookup ? "license_lookup_hit" : "license_lookup_miss", {
+        durationMs: Date.now() - start,
+      });
 
       return {
         plateNumber: lookup ? String(lookup.licensePlateNo) : plateNumber,
@@ -196,7 +250,11 @@ If this is not a car photo, set the error field to "not_a_car".`,
         seatCount: lookup?.seats ?? DEFAULTS.DEFAULT_SEAT_COUNT,
       };
     } catch (err) {
-      console.error("Gemini vision error:", err);
+      this.logger.error("gemini_vision_failed", {
+        durationMs: Date.now() - start,
+        model: this.model,
+        err,
+      });
       return null;
     }
   }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { GeoPoint, RouteResult, DetourResult } from "../types";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 
 const OsrmRouteSchema = z.object({
   distance: z.number(),
@@ -34,7 +36,10 @@ const OsrmNearestResponseSchema = z.object({
 export class RoutingService {
   private baseUrl: string;
 
-  constructor(osrmUrl: string = "http://localhost:5000") {
+  constructor(
+    osrmUrl: string = "http://localhost:5000",
+    private logger: Logger = noopLogger,
+  ) {
     this.baseUrl = osrmUrl.replace(/\/$/, "");
   }
 
@@ -45,31 +50,53 @@ export class RoutingService {
   async getRoute(origin: GeoPoint, dest: GeoPoint): Promise<RouteResult | null> {
     const coords = `${origin.lng},${origin.lat};${dest.lng},${dest.lat}`;
     const url = `${this.baseUrl}/route/v1/driving/${coords}?overview=full&geometries=polyline`;
+    const start = Date.now();
 
     try {
       const res = await fetch(url);
       const parsed = OsrmRouteResponseSchema.safeParse(await res.json());
       if (!parsed.success) {
-        console.warn("OSRM route response validation failed:", parsed.error);
+        this.logger.warn("osrm_route_response_invalid", {
+          durationMs: Date.now() - start,
+          err: parsed.error,
+        });
         return null;
       }
       const data = parsed.data;
 
       if (data.code !== "Ok" || !data.routes?.length) {
+        this.logger.warn("osrm_route_unavailable", {
+          durationMs: Date.now() - start,
+          code: data.code,
+          routeCount: data.routes?.length ?? 0,
+        });
         return null;
       }
 
       const route = data.routes[0];
       if (!route.geometry) {
+        this.logger.warn("osrm_route_missing_geometry", {
+          durationMs: Date.now() - start,
+          distanceMeters: route.distance,
+          durationSeconds: route.duration,
+        });
         return null;
       }
+      this.logger.debug("osrm_route_completed", {
+        durationMs: Date.now() - start,
+        distanceMeters: route.distance,
+        routeDurationSeconds: route.duration,
+      });
       return {
         distanceMeters: route.distance,
         durationSeconds: route.duration,
         geometry: route.geometry,
       };
     } catch (err) {
-      console.error("OSRM route error:", err);
+      this.logger.error("osrm_route_failed", {
+        durationMs: Date.now() - start,
+        err,
+      });
       return null;
     }
   }
@@ -89,9 +116,15 @@ export class RoutingService {
     pickup: GeoPoint,
     dropoff: GeoPoint,
   ): Promise<DetourResult | null> {
+    const start = Date.now();
     // Direct route
     const direct = await this.getRoute(driverOrigin, driverDest);
-    if (!direct) return null;
+    if (!direct) {
+      this.logger.warn("osrm_detour_direct_route_unavailable", {
+        durationMs: Date.now() - start,
+      });
+      return null;
+    }
 
     // Route with detour: origin → pickup → dropoff → dest
     const coords = [
@@ -107,16 +140,30 @@ export class RoutingService {
       const res = await fetch(url);
       const parsed = OsrmRouteResponseSchema.safeParse(await res.json());
       if (!parsed.success) {
-        console.warn("OSRM detour response validation failed:", parsed.error);
+        this.logger.warn("osrm_detour_response_invalid", {
+          durationMs: Date.now() - start,
+          err: parsed.error,
+        });
         return null;
       }
       const data = parsed.data;
 
       if (data.code !== "Ok" || !data.routes?.length) {
+        this.logger.warn("osrm_detour_unavailable", {
+          durationMs: Date.now() - start,
+          code: data.code,
+          routeCount: data.routes?.length ?? 0,
+        });
         return null;
       }
 
       const detourRoute = data.routes[0];
+      this.logger.debug("osrm_detour_completed", {
+        durationMs: Date.now() - start,
+        originalDurationSeconds: direct.durationSeconds,
+        detourDurationSeconds: detourRoute.duration,
+        addedSeconds: detourRoute.duration - direct.durationSeconds,
+      });
       return {
         originalDuration: direct.durationSeconds,
         detourDuration: detourRoute.duration,
@@ -125,7 +172,10 @@ export class RoutingService {
         dropoffPoint: dropoff,
       };
     } catch (err) {
-      console.error("OSRM detour error:", err);
+      this.logger.error("osrm_detour_failed", {
+        durationMs: Date.now() - start,
+        err,
+      });
       return null;
     }
   }
@@ -136,24 +186,37 @@ export class RoutingService {
    */
   async findNearest(point: GeoPoint): Promise<GeoPoint | null> {
     const url = `${this.baseUrl}/nearest/v1/driving/${point.lng},${point.lat}`;
+    const start = Date.now();
 
     try {
       const res = await fetch(url);
       const parsed = OsrmNearestResponseSchema.safeParse(await res.json());
       if (!parsed.success) {
-        console.warn("OSRM nearest response validation failed:", parsed.error);
+        this.logger.warn("osrm_nearest_response_invalid", {
+          durationMs: Date.now() - start,
+          err: parsed.error,
+        });
         return null;
       }
       const data = parsed.data;
 
       if (data.code !== "Ok" || !data.waypoints?.length) {
+        this.logger.warn("osrm_nearest_unavailable", {
+          durationMs: Date.now() - start,
+          code: data.code,
+          waypointCount: data.waypoints?.length ?? 0,
+        });
         return null;
       }
 
       const [lng, lat] = data.waypoints[0].location;
+      this.logger.debug("osrm_nearest_completed", { durationMs: Date.now() - start });
       return { lat, lng };
     } catch (err) {
-      console.error("OSRM nearest error:", err);
+      this.logger.error("osrm_nearest_failed", {
+        durationMs: Date.now() - start,
+        err,
+      });
       return null;
     }
   }

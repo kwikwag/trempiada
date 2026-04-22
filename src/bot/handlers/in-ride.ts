@@ -7,7 +7,7 @@ import { formatTrustProfile, formatDuration, generateCode } from "../../utils";
 import { SOS_KEYBOARD, mainMenuKeyboard, handleSos } from "../ui";
 
 export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
-  const { repo, sessions, notify } = deps;
+  const { repo, sessions, notify, logger } = deps;
 
   // --- Accept rider ---
   bot.action(/^accept_rider_(\d+)$/, async (ctx) => {
@@ -39,6 +39,15 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
     repo.updateMatchStatus(match.id, "accepted");
     repo.updateRideStatus(session.data.rideId, "matched");
     repo.updateRequestStatus(requestId, "matched");
+    logger.info("match_accepted", {
+      telegramId,
+      driverId: session.userId,
+      riderId: candidate.request.riderId,
+      matchId: match.id,
+      rideId: session.data.rideId,
+      requestId,
+      detourSeconds: candidate.detour.addedSeconds,
+    });
 
     const rider = repo.getUserById(candidate.request.riderId);
     if (!rider) return;
@@ -62,7 +71,12 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
         { parse_mode: "Markdown", ...SOS_KEYBOARD },
       );
     } catch (err) {
-      console.error("Failed to notify rider:", err);
+      logger.warn("match_accept_rider_notification_failed", {
+        telegramId,
+        matchId: match.id,
+        riderId: candidate.request.riderId,
+        err,
+      });
     }
 
     await ctx.editMessageText(
@@ -83,6 +97,13 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
 
     const candidates: MatchCandidate[] = session.data.candidates || [];
     const idx: number = (session.data.candidateIndex ?? 0) + 1;
+    logger.info("rider_candidate_skipped", {
+      telegramId,
+      userId: session.userId,
+      skippedRequestId: parseInt(ctx.match![1]),
+      nextIndex: idx,
+      candidateCount: candidates.length,
+    });
 
     if (idx >= candidates.length) {
       sessions.reset(telegramId);
@@ -132,6 +153,15 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
     repo.updateMatchStatus(matchId, "completed");
     repo.updateRideStatus(match.rideId, "completed");
     repo.updateRequestStatus(match.requestId, "completed");
+    logger.info("ride_completed", {
+      telegramId,
+      userId: session.userId,
+      matchId,
+      rideId: match.rideId,
+      requestId: match.requestId,
+      driverId: match.driverId,
+      riderId: match.riderId,
+    });
 
     const rider = repo.getUserById(match.riderId);
     const driver = repo.getUserById(match.driverId);
@@ -164,7 +194,11 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
           ratingKeyboard as any,
         );
       } catch (err) {
-        console.error("Failed to send rider rating prompt:", err);
+        logger.warn("rider_rating_prompt_failed", {
+          matchId,
+          riderId: rider.id,
+          err,
+        });
       }
     }
   });
@@ -183,6 +217,13 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
 
       const ratedId = match.driverId === session.userId ? match.riderId : match.driverId;
       repo.addRating(match.id, session.userId, ratedId, score, null);
+      logger.info("rating_submitted", {
+        telegramId,
+        userId: session.userId,
+        matchId: match.id,
+        ratedId,
+        score,
+      });
 
       if (repo.bothRated(match.id)) {
         const ratings = repo.getRatingsForMatch(match.id);
@@ -193,10 +234,24 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
           const pts =
             driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
           repo.adjustPoints(match.driverId, pts);
+          logger.info("points_awarded", {
+            matchId: match.id,
+            userId: match.driverId,
+            role: "driver",
+            points: pts,
+            ratingScore: driverRating.score,
+          });
         }
         if (riderRating) {
           const pts = riderRating.score >= 4 ? POINTS.RIDER_REWARD_HIGH : POINTS.RIDER_REWARD_LOW;
           repo.adjustPoints(match.riderId, pts);
+          logger.info("points_awarded", {
+            matchId: match.id,
+            userId: match.riderId,
+            role: "rider",
+            points: pts,
+            ratingScore: riderRating.score,
+          });
         }
 
         repo.incrementRideCount(match.driverId, "driver");
@@ -204,6 +259,11 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
 
         const driver = repo.getUserById(match.driverId);
         const rider = repo.getUserById(match.riderId);
+        logger.info("both_rated", {
+          matchId: match.id,
+          driverId: match.driverId,
+          riderId: match.riderId,
+        });
 
         if (driver && driverRating) {
           const pts =
@@ -261,13 +321,13 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
 
 export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<boolean> {
   const telegramId = ctx.from!.id;
-  const { repo, sessions, notify } = deps;
+  const { repo, sessions, notify, logger } = deps;
   const session = sessions.get(telegramId);
   const msg = (ctx as any).message;
 
   // --- SOS reply keyboard tap ---
   if ("text" in msg && msg.text === "🚨 SOS") {
-    if (session.userId) await handleSos(ctx, session.userId, repo);
+    if (session.userId) await handleSos(ctx, session.userId, repo, logger);
     return true;
   }
 
@@ -282,7 +342,19 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
       if (otherUser && thisUser && "text" in msg) {
         try {
           await notify(otherUser.telegramId, `💬 ${thisUser.firstName}: ${msg.text}`);
+          logger.info("relay_message_sent", {
+            telegramId,
+            fromUserId: thisUser.id,
+            toUserId: otherUser.id,
+            matchId: match.id,
+          });
         } catch {
+          logger.warn("relay_message_failed", {
+            telegramId,
+            fromUserId: thisUser.id,
+            toUserId: otherUser.id,
+            matchId: match.id,
+          });
           await ctx.reply("Couldn't relay your message. The other party may have blocked the bot.");
         }
         return true;
@@ -297,6 +369,12 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
       const code = msg.text.trim();
       if (code === match.confirmationCode) {
         repo.updateMatchStatus(match.id, "picked_up");
+        logger.info("pickup_confirmed", {
+          telegramId,
+          userId: session.userId,
+          matchId: match.id,
+          attemptCount: session.data.codeAttempts ?? 0,
+        });
 
         const rider = repo.getUserById(match.riderId);
         await ctx.reply(
@@ -313,7 +391,11 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
               "Ride started! ✅ Enjoy the ride.\n\nYou can send messages to your driver here.",
             );
           } catch (err) {
-            console.error("Failed to notify rider:", err);
+            logger.warn("pickup_rider_notification_failed", {
+              matchId: match.id,
+              riderId: match.riderId,
+              err,
+            });
           }
         }
         return true;
@@ -321,6 +403,12 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
 
       const attempts = (session.data.codeAttempts || 0) + 1;
       sessions.updateData(telegramId, { codeAttempts: attempts });
+      logger.warn("pickup_code_attempt_failed", {
+        telegramId,
+        userId: session.userId,
+        matchId: match.id,
+        attemptCount: attempts,
+      });
 
       if (attempts >= DEFAULTS.CONFIRMATION_MAX_ATTEMPTS) {
         await ctx.reply(

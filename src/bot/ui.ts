@@ -3,6 +3,8 @@ import type { Context } from "telegraf";
 import type { Repository } from "../db/repository";
 import type { SessionManager } from "./session";
 import { formatTrustProfile, formatRideSummary } from "../utils";
+import type { Logger } from "../logger";
+import { noopLogger } from "../logger";
 
 export const SOS_KEYBOARD = Markup.keyboard([["🚨 SOS"]]).resize();
 export const REMOVE_KEYBOARD = Markup.removeKeyboard();
@@ -63,7 +65,12 @@ export async function renderTrustProfile(
   );
 }
 
-export async function handleSos(ctx: Context, userId: number, repo: Repository): Promise<void> {
+export async function handleSos(
+  ctx: Context,
+  userId: number,
+  repo: Repository,
+  logger: Logger = noopLogger,
+): Promise<void> {
   const activeMatch = repo.getActiveMatchForUser(userId);
   await ctx.reply(
     `📍 Your ride details have been saved.\n\n` +
@@ -74,9 +81,12 @@ export async function handleSos(ctx: Context, userId: number, repo: Repository):
     Markup.inlineKeyboard([[Markup.button.callback("I'm OK, false alarm", "sos_ok")]]),
   );
   if (activeMatch) {
-    console.warn(
-      `SOS triggered: match=${activeMatch.id}, user=${userId}, time=${new Date().toISOString()}`,
-    );
+    logger.warn("sos_triggered", {
+      userId,
+      matchId: activeMatch.id,
+      rideId: activeMatch.rideId,
+      requestId: activeMatch.requestId,
+    });
     // TODO(privacy/legal): persist SOS events to a dedicated `sos_events` table
   }
 }

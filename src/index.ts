@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "path";
 import { Telegraf } from "telegraf";
 import { initDatabase } from "./db/migrate";
 import { Repository } from "./db/repository";
@@ -10,6 +11,7 @@ import { LicenseLookupService } from "./services/license-lookup";
 import { GeocodingService } from "./services/geocoding";
 import { registerHandlers } from "./bot/handlers";
 import { DevService } from "./bot/dev";
+import { createLogger } from "./logger";
 
 function parseIdSet(env: string | undefined): Set<number> {
   if (!env) return new Set();
@@ -21,11 +23,20 @@ function parseIdSet(env: string | undefined): Set<number> {
   );
 }
 
+function logPath(dbPath: string): { file: string; absolute: boolean } {
+  return {
+    file: path.basename(dbPath),
+    absolute: path.isAbsolute(dbPath),
+  };
+}
+
 // ============================================================
 // Main Entry Point
 // ============================================================
 
 async function main() {
+  const logger = createLogger();
+
   // --- Validate env ---
   const BOT_TOKEN = process.env.BOT_TOKEN;
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -37,33 +48,44 @@ async function main() {
   const altCount = parseInt(process.env.ALT_COUNT ?? "2", 10);
 
   if (!BOT_TOKEN) {
-    console.error("BOT_TOKEN is required. Set it in .env");
+    logger.error("missing_required_env", { variable: "BOT_TOKEN" });
     process.exit(1);
   }
   if (!GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY is required. Set it in .env");
+    logger.error("missing_required_env", { variable: "GEMINI_API_KEY" });
     process.exit(1);
   }
 
   // --- Initialize services ---
-  console.log("Initializing database...");
+  logger.info("app_starting", {
+    database: logPath(DATABASE_PATH),
+    licenseDatabase: logPath(LICENSE_DATABASE_PATH),
+    osrmUrl: OSRM_URL,
+    geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash-lite",
+    whitelistEnabled: whitelist.size > 0,
+    devModeEnabled: devIds.size > 0,
+    altCount,
+  });
   const db = initDatabase(DATABASE_PATH);
+  logger.info("database_initialized", { database: logPath(DATABASE_PATH) });
   const repo = new Repository(db);
 
-  const sessions = new SessionManager();
-  const routing = new RoutingService(OSRM_URL);
-  const matching = new MatchingService(repo, routing);
+  const sessions = new SessionManager(logger);
+  const routing = new RoutingService(OSRM_URL, logger);
+  const matching = new MatchingService(repo, routing, logger);
   const licenseLookup = new LicenseLookupService(LICENSE_DATABASE_PATH);
   const carRecognition = new CarRecognitionService(
     GEMINI_API_KEY,
     BOT_TOKEN,
     licenseLookup,
     process.env.GEMINI_MODEL,
+    logger,
   );
-  const geocoding = new GeocodingService();
+  const geocoding = new GeocodingService(undefined, undefined, logger);
+  logger.info("services_initialized");
 
   // --- Initialize bot ---
-  console.log("Starting bot...");
+  logger.info("bot_initializing");
   const bot = new Telegraf(BOT_TOKEN);
 
   const dev = devIds.size > 0 ? new DevService() : undefined;
@@ -73,31 +95,38 @@ async function main() {
     dev,
     devIds,
     altCount,
+    logger,
   });
 
   // --- Error handling ---
   bot.catch((err: any, ctx) => {
-    console.error(`Error for ${ctx.updateType}:`, err);
+    logger.error("bot_update_error", {
+      updateType: ctx.updateType,
+      telegramId: ctx.from?.id,
+      err,
+    });
     ctx.reply("Something went wrong. Please try again.").catch(() => {});
   });
 
   // --- Graceful shutdown ---
   const shutdown = (signal: string) => {
-    console.log(`\n${signal} received. Shutting down...`);
+    logger.info("shutdown_started", { signal });
     bot.stop(signal);
     licenseLookup.close();
     db.close();
+    logger.info("shutdown_completed", { signal });
     process.exit(0);
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   // --- Launch ---
+  logger.info("bot_launching");
   await bot.launch();
-  console.log("TrempiadaBot is running! 🚗");
+  logger.info("bot_running");
 }
 
 main().catch((err) => {
-  console.error("Fatal error:", err);
+  createLogger().error("fatal_error", { err });
   process.exit(1);
 });

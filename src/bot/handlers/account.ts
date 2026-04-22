@@ -13,7 +13,7 @@ import {
   REMOVE_KEYBOARD,
 } from "../ui";
 export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
-  const { repo, sessions, notify } = deps;
+  const { repo, sessions, notify, logger } = deps;
 
   // /start — entry point
   bot.start(async (ctx) => {
@@ -23,12 +23,21 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     if (existing) {
       sessions.setUserId(telegramId, existing.id);
       sessions.setScene(telegramId, "idle");
+      logger.info("user_started", {
+        telegramId,
+        userId: existing.id,
+        existingUser: true,
+      });
       await ctx.reply(`Welcome back, ${existing.firstName}! 👋`);
       await showMainMenu(ctx, existing.firstName);
       return;
     }
 
     sessions.setScene(telegramId, "registration_name", {});
+    logger.info("user_started", {
+      telegramId,
+      existingUser: false,
+    });
     await ctx.reply(
       `Hey! 👋 Welcome to TrempiadaBot.\n\n` +
         `We connect drivers with people looking for a ride along their route.\n\n` +
@@ -53,7 +62,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await handleSos(ctx, session.userId, repo);
+    await handleSos(ctx, session.userId, repo, logger);
   });
 
   bot.command("status", async (ctx) => {
@@ -76,11 +85,20 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (!activeMatch) {
       sessions.reset(telegramId);
+      logger.info("cancel_requested_without_active_match", {
+        telegramId,
+        userId: session.userId,
+      });
       await ctx.reply("Nothing to cancel. You're all clear.", mainMenuKeyboard());
       return;
     }
 
     sessions.setScene(telegramId, "cancel_reason", { matchId: activeMatch.id });
+    logger.info("cancel_requested", {
+      telegramId,
+      userId: session.userId,
+      matchId: activeMatch.id,
+    });
     await ctx.reply(`Cancelling your ride. What happened?`, cancellationKeyboard());
   });
 
@@ -145,7 +163,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await handleSos(ctx, session.userId, repo);
+    await handleSos(ctx, session.userId, repo, logger);
   });
 
   bot.action("cancel_from_status", async (ctx) => {
@@ -177,6 +195,10 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     }
 
     repo.anonymizeUser(session.userId);
+    logger.warn("account_deleted", {
+      telegramId,
+      userId: session.userId,
+    });
     sessions.reset(telegramId);
 
     await ctx.editMessageText(
@@ -203,6 +225,13 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       if (!match) return;
 
       repo.cancelMatch(matchId, session.userId, reason);
+      logger.info("ride_cancelled", {
+        telegramId,
+        userId: session.userId,
+        matchId,
+        reason,
+        cancelledBy: session.userId,
+      });
 
       const otherUserId = match.driverId === session.userId ? match.riderId : match.driverId;
       const otherUser = repo.getUserById(otherUserId);
@@ -237,7 +266,12 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
             mainMenuKeyboard() as any,
           );
         } catch (err) {
-          console.error("Failed to notify other party:", err);
+          logger.warn("cancel_other_party_notification_failed", {
+            telegramId,
+            matchId,
+            otherUserId,
+            err,
+          });
         }
       }
     });
@@ -257,6 +291,12 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
 
     repo.setVerificationVisibility(session.userId, type, !v.sharedWithRiders);
     const newState = !v.sharedWithRiders ? "visible to riders" : "hidden from riders";
+    logger.info("verification_visibility_changed", {
+      telegramId,
+      userId: session.userId,
+      verificationType: type,
+      sharedWithRiders: !v.sharedWithRiders,
+    });
 
     await ctx.answerCbQuery(`${type} is now ${newState}`);
     await renderTrustProfile(ctx, session.userId, repo);

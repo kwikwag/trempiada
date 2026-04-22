@@ -16,7 +16,7 @@ export function registerRegistrationHandlers(
   startDrivePostingFlow: StartDriveFlow,
   createWazeDriveFromUrl: CreateWazeDrive,
 ): void {
-  const { repo, sessions } = deps;
+  const { repo, sessions, logger } = deps;
 
   async function finishRegistration(ctx: Context, telegramId: number): Promise<void> {
     const session = sessions.get(telegramId);
@@ -58,6 +58,11 @@ export function registerRegistrationHandlers(
 
           sessions.setUserId(telegramId, user.id);
           sessions.setScene(telegramId, "idle");
+          logger.info("user_registered", {
+            telegramId,
+            userId: user.id,
+            profilePhotoSource: "telegram_profile",
+          });
 
           await ctx.editMessageText(`Got it! 👍`);
           await finishRegistration(ctx, telegramId);
@@ -68,6 +73,7 @@ export function registerRegistrationHandlers(
       }
 
       sessions.setScene(telegramId, "registration_photo");
+      logger.info("registration_profile_photo_needed", { telegramId });
       await ctx.editMessageText(
         `Got it.\n\nNow, send me a photo of yourself. ` +
           `This helps the other party recognize you.`,
@@ -96,6 +102,13 @@ export function registerRegistrationHandlers(
     );
 
     repo.addVerification(session.userId, "car");
+    logger.info("car_registered", {
+      telegramId,
+      userId: session.userId,
+      carId: car.id,
+      seatCount: car.seatCount,
+      year: car.year,
+    });
 
     await ctx.editMessageText(`Car registered! ✅\n\n` + formatCarInfo(car));
 
@@ -153,7 +166,7 @@ export async function handleRegistrationMessage(
   finishRegistrationCb: (ctx: Context, telegramId: number) => Promise<void>,
 ): Promise<boolean> {
   const telegramId = ctx.from!.id;
-  const { repo, sessions, carRecognition } = deps;
+  const { repo, sessions, carRecognition, logger } = deps;
   const session = sessions.get(telegramId);
   const msg = (ctx as any).message;
 
@@ -167,6 +180,10 @@ export async function handleRegistrationMessage(
 
     sessions.updateData(telegramId, { firstName });
     sessions.setScene(telegramId, "registration_gender");
+    logger.info("registration_name_received", {
+      telegramId,
+      firstNameLength: firstName.length,
+    });
 
     await ctx.reply(
       `Nice to meet you, ${firstName}!\n\nWhat's your gender?`,
@@ -196,6 +213,11 @@ export async function handleRegistrationMessage(
 
     sessions.setUserId(telegramId, user.id);
     sessions.setScene(telegramId, "idle");
+    logger.info("user_registered", {
+      telegramId,
+      userId: user.id,
+      profilePhotoSource: "manual_upload",
+    });
 
     await finishRegistrationCb(ctx, telegramId);
     return true;
@@ -212,10 +234,18 @@ export async function handleRegistrationMessage(
     const largest = photos[photos.length - 1];
 
     await ctx.reply("Analyzing your car photo... 🔍");
+    logger.info("car_photo_received", {
+      telegramId,
+      userId: session.userId,
+    });
 
     const carDetails = await carRecognition.extractFromTelegramPhoto(largest.file_id);
 
     if (!carDetails) {
+      logger.warn("car_photo_analysis_failed", {
+        telegramId,
+        userId: session.userId,
+      });
       await ctx.reply(
         "I couldn't read the car details from that photo. " +
           "Please try again with a clearer shot of the rear of the car, " +
@@ -226,6 +256,13 @@ export async function handleRegistrationMessage(
 
     sessions.updateData(telegramId, { carDetails, carPhotoFileId: largest.file_id });
     sessions.setScene(telegramId, "car_registration_confirm");
+    logger.info("car_photo_analysis_completed", {
+      telegramId,
+      userId: session.userId,
+      seatCount: carDetails.seatCount,
+      year: carDetails.year,
+      hasPlate: carDetails.plateNumber !== "unknown",
+    });
 
     await ctx.reply(
       `Got it! Here's what I found:\n\n` +
@@ -274,6 +311,11 @@ export async function handleRegistrationMessage(
 
     sessions.updateData(telegramId, { carDetails, carEditField: undefined });
     sessions.setScene(telegramId, "car_registration_confirm");
+    logger.info("car_details_edited", {
+      telegramId,
+      userId: session.userId,
+      field,
+    });
 
     await ctx.reply(
       `Updated! Here's what I have:\n\n` +

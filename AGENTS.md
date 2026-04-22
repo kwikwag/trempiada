@@ -46,6 +46,7 @@ src/
 │   ├── routing.ts           # OSRM client (route calc, detour estimation)
 │   ├── matching.ts          # Core matching algorithm (driver↔rider)
 │   └── car-recognition.ts   # Claude Vision for license plate/car extraction
+├── logger.ts                # Structured JSON logger (LOG_LEVEL-controlled)
 └── utils/
     └── index.ts             # Formatting, geo helpers, code generation
 ```
@@ -59,6 +60,7 @@ src/
 - **Trust model**: Drivers must complete ≥1 verification. Each verification is stored in DB; drivers control which are _visible_ to riders vs just verified by the system.
 - **Message relay**: During active rides, non-command messages forwarded between parties through the bot (no personal contact shared).
 - **Anti-gaming**: Min 5km ride distance, same-pair 24h cooldown, cancellation tracking, simultaneous rating reveal.
+- **Logging**: Server-side logs are structured JSON via `src/logger.ts`. Do not log raw Telegram message text, confirmation codes, phone numbers, license plates, Telegram file IDs, or precise personal location values. Log metadata, IDs, timings, state transitions, aggregate matching counters, and external service failures.
 
 ## Environment Variables
 
@@ -67,6 +69,7 @@ BOT_TOKEN=           # Telegram bot token (required)
 ANTHROPIC_API_KEY=   # For car photo analysis (required)
 DATABASE_PATH=       # Default: ./data/rides.db
 OSRM_URL=            # Default: http://localhost:5000
+LOG_LEVEL=           # debug | info | warn | error (default: info)
 ```
 
 ## Conventions

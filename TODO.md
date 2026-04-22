@@ -12,9 +12,10 @@
 - [ ] Hebrew localization
 - [ ] Posting a drive while waiting for a ride (or vice versa) should overwrite the previous status with a warning; the review message should indicate it replaces the current one
 - [ ] `/status` should show whether a ride is offered or requested (not only active matches); `/cancel` should cancel whichever is active (match, posted drive, or open request) with role-appropriate reason choices; after cancelling a match, show current posted state and ask whether to revise or cancel it
+- [ ] `MatchingService.findDriversForRider` / `findRidersForDriver` — compare estimated arrival-at-pickup time against the rider's time window so an en-route driver approaching the pickup point can match; keep rejecting drivers who already passed the pickup point
 - [ ] `tests/unit/utils.test.ts` — `parseTimeToday` (valid, midnight edge, invalid), `formatDuration`, `generateCode` (length + numeric-only), `haversineDistance`
 - [ ] `tests/integration/repository.test.ts` — CRUD for users/cars/rides/requests/matches; `getActiveMatchForUser`; `getActiveRideForDriver`; `anonymizeUser` (PII removed, row kept); `adjustPoints`/`getPointsBalance`
-- [ ] `tests/unit/session.test.ts` — `setScene`/`updateData`/`reset` transitions; `isInRelay`
+- [x] `tests/unit/session.test.ts` — `setScene`/`updateData`/`reset` transitions; `isInRelay`
 
 ## Ideas
 

@@ -18,12 +18,43 @@ import { registerRideRequestHandlers, handleRideRequestMessage } from "./handler
 import { registerInRideHandlers, handleInRideMessage } from "./handlers/in-ride";
 import { registerAccountHandlers } from "./handlers/account";
 import { formatTrustProfile } from "../utils";
+import type { Logger, LogContext } from "../logger";
+import { noopLogger } from "../logger";
 
 export interface HandlerOptions {
   whitelist?: Set<number>;
   dev?: DevService;
   devIds?: Set<number>;
   altCount?: number;
+  logger?: Logger;
+}
+
+function messageKind(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const keys = Object.keys(message);
+  return ["text", "location", "photo", "contact", "voice", "video", "document"].find((key) =>
+    keys.includes(key),
+  );
+}
+
+function updateMetadata(ctx: any, sessions: SessionManager): LogContext {
+  const telegramId = ctx.from?.id;
+  const session = telegramId ? sessions.get(telegramId) : null;
+  const msg = ctx.message;
+  const text = msg && "text" in msg ? String(msg.text) : undefined;
+  const callbackData =
+    ctx.callbackQuery && "data" in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
+
+  return {
+    updateId: ctx.update?.update_id,
+    updateType: ctx.updateType,
+    telegramId,
+    userId: session?.userId,
+    scene: session?.scene,
+    messageKind: messageKind(msg),
+    command: text?.startsWith("/") ? text.split(/\s+/, 1)[0] : undefined,
+    callbackData,
+  };
 }
 
 export function registerHandlers(
@@ -36,13 +67,20 @@ export function registerHandlers(
   geocoding: GeocodingService,
   options: HandlerOptions = {},
 ) {
-  const { whitelist, dev, devIds, altCount = 2 } = options;
+  const { whitelist, dev, devIds, altCount = 2, logger = noopLogger } = options;
 
   // ---- Whitelist middleware ----
   // Silently drop updates from non-whitelisted users (no reply, to avoid revealing the bot).
   if (whitelist && whitelist.size > 0) {
     bot.use((ctx, next) => {
-      if (!whitelist.has(ctx.from?.id ?? 0)) return;
+      if (!whitelist.has(ctx.from?.id ?? 0)) {
+        logger.info("update_dropped_not_whitelisted", {
+          updateId: (ctx.update as any).update_id,
+          updateType: ctx.updateType,
+          telegramId: ctx.from?.id,
+        });
+        return;
+      }
       return next();
     });
   }
@@ -59,6 +97,10 @@ export function registerHandlers(
         if (effectiveId !== realId) {
           dev.registerChat(effectiveId, realId);
           (ctx.from as any).id = effectiveId;
+          logger.debug("dev_impersonation_applied", {
+            realTelegramId: realId,
+            effectiveTelegramId: effectiveId,
+          });
         }
       }
       return next();
@@ -67,12 +109,54 @@ export function registerHandlers(
     registerDevHandlers(bot, dev, devIds ?? new Set(), sessions, altCount);
   }
 
+  // ---- Structured update logging ----
+  bot.use(async (ctx, next) => {
+    const start = Date.now();
+    const before = updateMetadata(ctx, sessions);
+    logger.debug("update_received", before);
+
+    try {
+      await next();
+      logger.info("update_handled", {
+        ...updateMetadata(ctx, sessions),
+        previousScene: before.scene,
+        durationMs: Date.now() - start,
+      });
+    } catch (err) {
+      logger.error("update_failed", {
+        ...updateMetadata(ctx, sessions),
+        previousScene: before.scene,
+        durationMs: Date.now() - start,
+        err,
+      });
+      throw err;
+    }
+  });
+
   // Use this instead of bot.telegram.sendMessage whenever the target may be an alt user.
   // In dev mode, routes the message to the real chat with a persona prefix.
   async function notify(targetId: number, text: string, extra?: object): Promise<void> {
     const chatId = dev ? dev.resolveChat(targetId) : targetId;
     const prefix = dev ? dev.labelFor(targetId) : "";
-    await bot.telegram.sendMessage(chatId, prefix + text, extra as any);
+    const start = Date.now();
+    try {
+      await bot.telegram.sendMessage(chatId, prefix + text, extra as any);
+      logger.debug("notification_sent", {
+        targetId,
+        chatId,
+        devRouted: Boolean(dev && chatId !== targetId),
+        durationMs: Date.now() - start,
+      });
+    } catch (err) {
+      logger.warn("notification_failed", {
+        targetId,
+        chatId,
+        devRouted: Boolean(dev && chatId !== targetId),
+        durationMs: Date.now() - start,
+        err,
+      });
+      throw err;
+    }
   }
 
   const deps: BotDeps = {
@@ -83,6 +167,7 @@ export function registerHandlers(
     carRecognition,
     geocoding,
     notify,
+    logger,
   };
 
   // ---- Register domain handlers ----
@@ -137,5 +222,6 @@ export function registerHandlers(
       { command: "sos", description: "🚨 Emergency — call for help" },
       { command: "delete", description: "Delete my account" },
     ])
-    .catch((err) => console.error("Failed to set bot commands:", err));
+    .then(() => logger.info("bot_commands_registered"))
+    .catch((err) => logger.warn("bot_commands_registration_failed", { err }));
 }
