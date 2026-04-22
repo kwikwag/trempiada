@@ -83,6 +83,14 @@ export function registerHandlers({
 }: RegisterHandlersArgs) {
   const { whitelist, dev, devIds, altCount = 2, logger = noopLogger } = options;
 
+  // ---- Dev: track all users before whitelist filtering ----
+  if (dev) {
+    bot.use((ctx, next) => {
+      if (ctx.from) dev.trackUser(ctx.from);
+      return next();
+    });
+  }
+
   // ---- Whitelist middleware ----
   // Silently drop updates from non-whitelisted users (no reply, to avoid revealing the bot).
   if (whitelist && whitelist.size > 0) {

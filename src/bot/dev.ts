@@ -9,9 +9,18 @@ import type { GeocodingService } from "../services/geocoding";
 // Synthetic Telegram IDs for alt personas. Above the real Telegram ID range.
 const ALT_BASE_ID = 9_000_000_000;
 
+interface RecentUser {
+  id: number;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  seenAt: Date;
+}
+
 export class DevService {
   private activeAlt = new Map<number, number>(); // realId → altId
   private altChats = new Map<number, number>(); // altId → realChatId
+  private recentUsers: RecentUser[] = [];
 
   getEffectiveId(realId: number): number {
     return this.activeAlt.get(realId) ?? realId;
@@ -33,6 +42,27 @@ export class DevService {
   /** Returns the real chat ID to deliver a message to, given any user ID. */
   resolveChat(targetId: number): number {
     return this.altChats.get(targetId) ?? targetId;
+  }
+
+  trackUser(from: {
+    id: number;
+    username?: string;
+    first_name?: string;
+    last_name?: string;
+  }): void {
+    this.recentUsers = this.recentUsers.filter((u) => u.id !== from.id);
+    this.recentUsers.push({
+      id: from.id,
+      username: from.username,
+      firstName: from.first_name,
+      lastName: from.last_name,
+      seenAt: new Date(),
+    });
+    if (this.recentUsers.length > 5) this.recentUsers.shift();
+  }
+
+  getRecentUsers(): RecentUser[] {
+    return [...this.recentUsers].reverse();
   }
 
   isAlt(id: number): boolean {
@@ -141,10 +171,40 @@ export function registerDevHandlers({
         await ctx.reply("Usage: /whitelist <telegram_id>");
         return;
       }
-      whitelist.add(id);
-      await ctx.reply(`✅ Added ${id} to whitelist (${whitelist.size} total). Restart to persist.`);
+      if (whitelist.has(id)) {
+        whitelist.delete(id);
+        await ctx.reply(
+          `❌ Removed ${id} from whitelist (${whitelist.size} total). Restart to persist.`,
+        );
+      } else {
+        whitelist.add(id);
+        await ctx.reply(
+          `✅ Added ${id} to whitelist (${whitelist.size} total). Restart to persist.`,
+        );
+      }
     });
   }
+
+  bot.command("last", async (ctx) => {
+    const realId = getRealId(ctx);
+    if (!devIds.has(realId)) return;
+    const users = dev.getRecentUsers();
+    if (users.length === 0) {
+      await ctx.reply("No recent users recorded.");
+      return;
+    }
+    const lines = users.map((u, i) => {
+      const name = [u.firstName, u.lastName].filter(Boolean).join(" ");
+      const parts = [`${i + 1}. \`${u.id}\``];
+      if (name) parts.push(name);
+      if (u.username) parts.push(`@${u.username}`);
+      parts.push(u.seenAt.toISOString().replace("T", " ").slice(0, 19));
+      return parts.join(" | ");
+    });
+    await ctx.reply(`*Last ${users.length} users:*\n${lines.join("\n")}`, {
+      parse_mode: "Markdown",
+    });
+  });
 
   bot.command("dev", async (ctx) => {
     const realId = getRealId(ctx);
