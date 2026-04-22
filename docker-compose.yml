@@ -20,8 +20,6 @@ services:
     # Requires Israel OSM data to be preprocessed first.
     # Run scripts/setup-osrm.sh once before starting with docker compose up.
     command: osrm-routed --algorithm mld --max-table-size 1000 /data/israel.osrm
-    ports:
-      - "5000:5000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
       interval: 10s
