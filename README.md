@@ -112,15 +112,16 @@ For emergency commits only, bypass it with `SKIP_PRECOMMIT=1 git commit ...`.
 
 ## Bot Commands
 
-| Command   | Description                               |
-| --------- | ----------------------------------------- |
-| `/start`  | Register or welcome back                  |
-| `/drive`  | Offer a ride (triggers car reg if needed) |
-| `/ride`   | Request a ride                            |
-| `/cancel` | Cancel active ride + reason               |
-| `/trust`  | View/manage identity verifications        |
-| `/status` | Check points balance and active ride      |
-| `/sos`    | Emergency — logs event, shows helplines   |
+| Command    | Description                                       |
+| ---------- | ------------------------------------------------- |
+| `/start`   | Register or welcome back                          |
+| `/drive`   | Offer a ride (triggers car reg if needed)         |
+| `/ride`    | Request a ride                                    |
+| `/cancel`  | Cancel active ride + reason                       |
+| `/profile` | View/manage your profile and verifications        |
+| `/restart` | Re-run profile onboarding (name/gender/photo/car) |
+| `/status`  | Check points balance and active ride              |
+| `/sos`     | Emergency — logs event, shows helplines           |
 
 ## Points Economy
 
@@ -144,7 +145,7 @@ For emergency commits only, bypass it with `SKIP_PRECOMMIT=1 git commit ...`.
 - Drivers must complete at least 1 identity verification
 - Verifications: phone (auto), photo, car, Facebook, LinkedIn, Google, email
 - Drivers choose which verifications are visible to riders
-- Riders see a trust profile with verification badges + ratings
+- Riders see the driver's profile with verification badges + ratings
 - Driver gender is displayed to riders
 - License plates partially masked until ride is confirmed
 - 4-digit confirmation code at pickup

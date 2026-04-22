@@ -38,7 +38,7 @@ src/
 │   ├── ui.ts                # Shared UI helpers (keyboards, showMainMenu, showStatus, etc.)
 │   ├── handlers.ts          # Thin wiring: middleware, notify(), assembles BotDeps, delegates to sub-handlers
 │   └── handlers/
-│       ├── account.ts       # /start, /cancel, /trust, /sos, /status, /delete + cancellation/verification actions
+│       ├── account.ts       # /start, /cancel, /profile, /restart, /sos, /status, /delete + cancellation/verification actions
 │       ├── drive-posting.ts # /drive, Waze import, ride review/edit, post ride, accept/skip candidates
 │       ├── ride-request.ts  # /ride, pickup/dropoff scenes, time window selection
 │       ├── in-ride.ts       # Message relay, confirmation code, accept/skip/complete ride, ratings
@@ -87,9 +87,9 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 ## Git Commit Messages
 
 - Match the existing commit-message style: imperative, sentence-case subject line, usually starting with verbs.
-- When a commit is non-trivial, include a short body explaining the behavioral change and use bullets for multi-part changes.
+- When a commit is non-trivial, include a short body explaining the behavioral change and use bullets for multi-part changes. Be succint and precise.
 - Include relevant verification/test additions in the body when they are part of the change.
-- If an agent authored or materially contributed to the commit, include a `Co-authored-by:` line in the final footer.
+- If an agent authored or materially contributed to the commit, include a `Co-authored-by:` line in the final footer (e.g. `Codex <codex@openai.com>`)
 
 ## UX Model
 
