@@ -51,7 +51,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("Register first.", mainMenuKeyboard());
+      await ctx.reply("/start first.", mainMenuKeyboard());
       return;
     }
 
@@ -70,7 +70,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const session = sessions.get(telegramId);
 
     if (!session.userId) {
-      await ctx.reply("Register first.", mainMenuKeyboard());
+      await ctx.reply("/start first.", mainMenuKeyboard());
       return;
     }
 

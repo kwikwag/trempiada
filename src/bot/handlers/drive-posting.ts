@@ -584,7 +584,7 @@ export async function ensureDriverReady(
     } else {
       deps.logger.info("driver_flow_blocked_unregistered", { telegramId });
       await ctx.reply(
-        "You need to register first.",
+        "You need to /start first.",
         Markup.inlineKeyboard([[Markup.button.callback("Get started 👋", "menu_start")]]),
       );
       return null;

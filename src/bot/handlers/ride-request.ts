@@ -491,7 +491,7 @@ export async function startRideRequestFlow(
 
   if (!session.userId) {
     logger.info("request_flow_blocked_unregistered", { telegramId });
-    await ctx.reply("You need to register first.", mainMenuKeyboard());
+    await ctx.reply("You need to /start first.", mainMenuKeyboard());
     return;
   }
 
