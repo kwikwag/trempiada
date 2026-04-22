@@ -3,6 +3,7 @@ import path from "path";
 import { Telegraf } from "telegraf";
 import { initDatabase } from "./db/migrate";
 import { Repository } from "./db/repository";
+import { DevRepository } from "./db/dev-repository";
 import { SessionManager } from "./bot/session";
 import { RoutingService } from "./services/routing";
 import { MatchingService } from "./services/matching";
@@ -89,10 +90,12 @@ async function main() {
   const bot = new Telegraf(BOT_TOKEN);
 
   const dev = devIds.size > 0 ? new DevService() : undefined;
+  const devRepo = dev ? new DevRepository(db) : undefined;
 
   registerHandlers(bot, repo, sessions, matching, routing, carRecognition, geocoding, {
     whitelist: whitelist.size > 0 ? whitelist : undefined,
     dev,
+    devRepo,
     devIds,
     altCount,
     logger,

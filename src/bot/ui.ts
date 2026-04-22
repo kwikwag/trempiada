@@ -5,6 +5,7 @@ import type { SessionManager } from "./session";
 import { formatTrustProfile, formatRideSummary } from "../utils";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
+import type { Match, Ride, RideRequest, User } from "../types";
 
 export const SOS_KEYBOARD = Markup.keyboard([["🚨 SOS"]]).resize();
 export const REMOVE_KEYBOARD = Markup.removeKeyboard();
@@ -125,21 +126,125 @@ export async function showStatus(ctx: Context, userId: number, repo: Repository)
   const user = repo.getUserById(userId)!;
   const activeMatch = repo.getActiveMatchForUser(userId);
 
-  let statusText = `💰 Points: ${user.pointsBalance.toFixed(1)}\n`;
-
   if (activeMatch) {
-    statusText += `\n🚗 Active ride (${activeMatch.status})\nMatch #${activeMatch.id}`;
+    const ride = repo.getRideById(activeMatch.rideId);
+    const request = repo.getRideRequestById(activeMatch.requestId);
+    const isDriver = activeMatch.driverId === userId;
+    const otherUser = repo.getUserById(isDriver ? activeMatch.riderId : activeMatch.driverId);
+    const buttons = [];
+
+    if (isDriver && activeMatch.status === "picked_up") {
+      buttons.push([Markup.button.callback("🏁 Complete ride", `complete_ride_${activeMatch.id}`)]);
+    }
+    buttons.push([Markup.button.callback("🚨 SOS", "sos_button")]);
+    buttons.push([Markup.button.callback("Cancel ride", "cancel_from_status")]);
+
     await ctx.reply(
-      statusText,
+      [
+        accountLine(user),
+        "",
+        formatMatchStatus(activeMatch, isDriver, otherUser, ride, request),
+      ].join("\n"),
+      Markup.inlineKeyboard(buttons),
+    );
+    return;
+  }
+
+  const openRide = repo.getOpenRideForDriver(userId);
+  if (openRide) {
+    await ctx.reply(
+      [accountLine(user), "", formatOpenRideStatus(openRide)].join("\n"),
       Markup.inlineKeyboard([
-        [Markup.button.callback("🚨 SOS", "sos_button")],
-        [Markup.button.callback("Cancel ride", "cancel_from_status")],
+        [Markup.button.callback("Review riders", "review_riders")],
+        [Markup.button.callback("Cancel offer", "cancel_open_ride")],
+        [Markup.button.callback("Request a ride instead", "switch_offer_to_request")],
       ]),
     );
-  } else {
-    statusText += `\nNo active ride right now.`;
-    await ctx.reply(statusText, mainMenuKeyboard());
+    return;
   }
+
+  const openRequest = repo.getOpenRideRequestForRider(userId);
+  if (openRequest) {
+    await ctx.reply(
+      [accountLine(user), "", formatOpenRequestStatus(openRequest)].join("\n"),
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Cancel request", "cancel_open_request")],
+        [Markup.button.callback("Offer a ride instead", "switch_request_to_drive")],
+      ]),
+    );
+    return;
+  }
+
+  await ctx.reply(
+    [accountLine(user), "", "No active ride offer or request right now."].join("\n"),
+    mainMenuKeyboard(),
+  );
+}
+
+function accountLine(user: User): string {
+  return `💰 Points: ${user.pointsBalance.toFixed(1)}`;
+}
+
+function formatMatchStatus(
+  match: Match,
+  isDriver: boolean,
+  otherUser: User | null,
+  ride: Ride | null,
+  request: RideRequest | null,
+): string {
+  const role = isDriver ? "driver" : "rider";
+  const otherRole = isDriver ? "rider" : "driver";
+  const otherName = otherUser?.firstName ?? `your ${otherRole}`;
+  const route =
+    (request ?? ride)
+      ? `\n📍 ${request?.pickupLabel ?? ride?.originLabel} → ${request?.dropoffLabel ?? ride?.destLabel}`
+      : "";
+
+  if (match.status === "accepted") {
+    const next = isDriver
+      ? `Next: go to pickup, ask ${otherName} for the ${match.confirmationCode.length}-digit code, then type it here.`
+      : `Next: wait for ${otherName} at pickup and show this code when they arrive: ${match.confirmationCode}`;
+    return [`🚗 Matched as ${role} with ${otherName}.${route}`, next].join("\n");
+  }
+
+  if (match.status === "picked_up") {
+    const next = isDriver
+      ? "Next: complete the ride after dropoff."
+      : `Next: enjoy the ride. You can message ${otherName} here if needed.`;
+    return [`🚗 Ride in progress as ${role} with ${otherName}.${route}`, next].join("\n");
+  }
+
+  return [
+    `🚗 Match pending as ${role} with ${otherName}.${route}`,
+    "Next: wait for the other party to confirm.",
+  ].join("\n");
+}
+
+function formatOpenRideStatus(ride: Ride): string {
+  return [
+    "🚗 You are offering a ride.",
+    `📍 ${ride.originLabel} → ${ride.destLabel}`,
+    `🕐 Leaving ${formatStatusTime(ride.departureTime)}`,
+    `👥 ${ride.availableSeats} seat${ride.availableSeats === 1 ? "" : "s"} available`,
+    "Next: review matching riders, or cancel this offer before requesting a ride.",
+  ].join("\n");
+}
+
+function formatOpenRequestStatus(request: RideRequest): string {
+  return [
+    "🛑 You are requesting a ride.",
+    `📍 ${request.pickupLabel} → ${request.dropoffLabel}`,
+    `🕐 Window: ${formatStatusTime(request.earliestDeparture)}-${formatStatusTime(request.latestDeparture)}`,
+    "Next: wait for a driver, or cancel this request before offering a ride.",
+  ].join("\n");
+}
+
+function formatStatusTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-IL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 export function cancellationKeyboard() {

@@ -476,6 +476,16 @@ export class Repository {
     return row ? this.mapRide(row) : null;
   }
 
+  getOpenRideForDriver(driverId: number): Ride | null {
+    const row = this.db
+      .prepare<
+        [number],
+        RideRow
+      >("SELECT * FROM rides WHERE driver_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
+      .get(driverId);
+    return row ? this.mapRide(row) : null;
+  }
+
   getActiveRideForDriver(driverId: number): Ride | null {
     const row = this.db
       .prepare<
@@ -484,6 +494,13 @@ export class Repository {
       >("SELECT * FROM rides WHERE driver_id = ? AND status IN ('open', 'matched') ORDER BY created_at DESC LIMIT 1")
       .get(driverId);
     return row ? this.mapRide(row) : null;
+  }
+
+  cancelOpenRideForDriver(driverId: number): Ride | null {
+    const ride = this.getOpenRideForDriver(driverId);
+    if (!ride) return null;
+    this.updateRideStatus(ride.id, "cancelled");
+    return { ...ride, status: "cancelled" };
   }
 
   // ---- Ride Requests ----
@@ -526,6 +543,30 @@ export class Repository {
 
   updateRequestStatus(requestId: number, status: RequestStatus): void {
     this.db.prepare("UPDATE ride_requests SET status = ? WHERE id = ?").run(status, requestId);
+  }
+
+  getRideRequestById(requestId: number): RideRequest | null {
+    const row = this.db
+      .prepare<[number], RideRequestRow>("SELECT * FROM ride_requests WHERE id = ?")
+      .get(requestId);
+    return row ? this.mapRequest(row) : null;
+  }
+
+  getOpenRideRequestForRider(riderId: number): RideRequest | null {
+    const row = this.db
+      .prepare<
+        [number],
+        RideRequestRow
+      >("SELECT * FROM ride_requests WHERE rider_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
+      .get(riderId);
+    return row ? this.mapRequest(row) : null;
+  }
+
+  cancelOpenRideRequestForRider(riderId: number): RideRequest | null {
+    const request = this.getOpenRideRequestForRider(riderId);
+    if (!request) return null;
+    this.updateRequestStatus(request.id, "cancelled");
+    return { ...request, status: "cancelled" };
   }
 
   // ---- Matches ----

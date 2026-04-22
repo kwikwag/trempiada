@@ -6,6 +6,7 @@ import type { RoutingService } from "../services/routing";
 import type { CarRecognitionService } from "../services/car-recognition";
 import type { GeocodingService } from "../services/geocoding";
 import type { BotDeps } from "./deps";
+import type { DevRepository } from "../db/dev-repository";
 import { DevService, registerDevHandlers } from "./dev";
 import { registerRegistrationHandlers, handleRegistrationMessage } from "./handlers/registration";
 import {
@@ -24,6 +25,7 @@ import { noopLogger } from "../logger";
 export interface HandlerOptions {
   whitelist?: Set<number>;
   dev?: DevService;
+  devRepo?: DevRepository;
   devIds?: Set<number>;
   altCount?: number;
   logger?: Logger;
@@ -106,7 +108,10 @@ export function registerHandlers(
       return next();
     });
 
-    registerDevHandlers(bot, dev, devIds ?? new Set(), sessions, altCount);
+    if (!options.devRepo) {
+      throw new Error("DevRepository is required when dev mode is enabled");
+    }
+    registerDevHandlers(bot, dev, devIds ?? new Set(), sessions, options.devRepo, altCount);
   }
 
   // ---- Structured update logging ----

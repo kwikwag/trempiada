@@ -21,6 +21,35 @@ export function registerInRideHandlers(bot: Telegraf, deps: BotDeps): void {
     const candidate = candidates.find((c: MatchCandidate) => c.request.id === requestId);
     if (!candidate) return;
 
+    const existingDriverMatch = repo.getActiveMatchForUser(session.userId);
+    const existingRiderMatch = repo.getActiveMatchForUser(candidate.request.riderId);
+    const ride = repo.getRideById(session.data.rideId);
+    const request = repo.getRideRequestById(requestId);
+    if (
+      existingDriverMatch ||
+      existingRiderMatch ||
+      !ride ||
+      !request ||
+      ride.status !== "open" ||
+      request.status !== "open"
+    ) {
+      logger.info("accept_rider_blocked_stale_or_conflicting_activity", {
+        telegramId,
+        driverId: session.userId,
+        riderId: candidate.request.riderId,
+        rideId: session.data.rideId,
+        requestId,
+        existingDriverMatchId: existingDriverMatch?.id,
+        existingRiderMatchId: existingRiderMatch?.id,
+        rideStatus: ride?.status,
+        requestStatus: request?.status,
+      });
+      await ctx.editMessageText(
+        "That rider is no longer available, or you already have an active ride. Use /status for your current state.",
+      );
+      return;
+    }
+
     const code = generateCode(DEFAULTS.CONFIRMATION_CODE_LENGTH);
     const match = repo.createMatch({
       rideId: session.data.rideId,
@@ -331,41 +360,18 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
     return true;
   }
 
-  // --- Message relay during active ride ---
-  if (session.scene === "in_ride_relay" && session.userId) {
-    const match = repo.getActiveMatchForUser(session.userId);
-    if (match) {
-      const otherUserId = match.driverId === session.userId ? match.riderId : match.driverId;
-      const otherUser = repo.getUserById(otherUserId);
-      const thisUser = repo.getUserById(session.userId);
-
-      if (otherUser && thisUser && "text" in msg) {
-        try {
-          await notify(otherUser.telegramId, `💬 ${thisUser.firstName}: ${msg.text}`);
-          logger.info("relay_message_sent", {
-            telegramId,
-            fromUserId: thisUser.id,
-            toUserId: otherUser.id,
-            matchId: match.id,
-          });
-        } catch {
-          logger.warn("relay_message_failed", {
-            telegramId,
-            fromUserId: thisUser.id,
-            toUserId: otherUser.id,
-            matchId: match.id,
-          });
-          await ctx.reply("Couldn't relay your message. The other party may have blocked the bot.");
-        }
-        return true;
-      }
-    }
-  }
-
   // --- Confirmation code entry during ride ---
-  if (session.scene === "in_ride_relay" && "text" in msg) {
-    const match = repo.getActiveMatchForUser(session.userId!);
-    if (match && match.status === "accepted" && match.driverId === session.userId) {
+  if (session.scene === "in_ride_relay" && session.userId && "text" in msg) {
+    const match = repo.getActiveMatchForUser(session.userId);
+    const looksLikeConfirmationCode = new RegExp(
+      `^\\d{${DEFAULTS.CONFIRMATION_CODE_LENGTH}}$`,
+    ).test(msg.text.trim());
+    if (
+      match &&
+      match.status === "accepted" &&
+      match.driverId === session.userId &&
+      looksLikeConfirmationCode
+    ) {
       const code = msg.text.trim();
       if (code === match.confirmationCode) {
         repo.updateMatchStatus(match.id, "picked_up");
@@ -422,6 +428,37 @@ export async function handleInRideMessage(ctx: Context, deps: BotDeps): Promise<
           `(${DEFAULTS.CONFIRMATION_MAX_ATTEMPTS - attempts} attempts remaining)`,
       );
       return true;
+    }
+  }
+
+  // --- Message relay during active ride ---
+  if (session.scene === "in_ride_relay" && session.userId) {
+    const match = repo.getActiveMatchForUser(session.userId);
+    if (match) {
+      const otherUserId = match.driverId === session.userId ? match.riderId : match.driverId;
+      const otherUser = repo.getUserById(otherUserId);
+      const thisUser = repo.getUserById(session.userId);
+
+      if (otherUser && thisUser && "text" in msg) {
+        try {
+          await notify(otherUser.telegramId, `💬 ${thisUser.firstName}: ${msg.text}`);
+          logger.info("relay_message_sent", {
+            telegramId,
+            fromUserId: thisUser.id,
+            toUserId: otherUser.id,
+            matchId: match.id,
+          });
+        } catch {
+          logger.warn("relay_message_failed", {
+            telegramId,
+            fromUserId: thisUser.id,
+            toUserId: otherUser.id,
+            matchId: match.id,
+          });
+          await ctx.reply("Couldn't relay your message. The other party may have blocked the bot.");
+        }
+        return true;
+      }
     }
   }
 

@@ -84,6 +84,32 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
 
     const activeMatch = repo.getActiveMatchForUser(session.userId);
     if (!activeMatch) {
+      const cancelledRide = repo.cancelOpenRideForDriver(session.userId);
+      if (cancelledRide) {
+        sessions.reset(telegramId);
+        logger.info("open_ride_cancelled", {
+          telegramId,
+          userId: session.userId,
+          rideId: cancelledRide.id,
+          source: "command",
+        });
+        await ctx.reply("Your ride offer is cancelled.", mainMenuKeyboard());
+        return;
+      }
+
+      const cancelledRequest = repo.cancelOpenRideRequestForRider(session.userId);
+      if (cancelledRequest) {
+        sessions.reset(telegramId);
+        logger.info("open_ride_request_cancelled", {
+          telegramId,
+          userId: session.userId,
+          requestId: cancelledRequest.id,
+          source: "command",
+        });
+        await ctx.reply("Your ride request is cancelled.", mainMenuKeyboard());
+        return;
+      }
+
       sessions.reset(telegramId);
       logger.info("cancel_requested_without_active_match", {
         telegramId,
@@ -182,6 +208,54 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     await ctx.reply(`Cancelling your ride. What happened?`, cancellationKeyboard());
   });
 
+  bot.action("cancel_open_ride", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const cancelledRide = repo.cancelOpenRideForDriver(session.userId);
+    if (!cancelledRide) {
+      await ctx.editMessageText("No open ride offer to cancel.");
+      return;
+    }
+
+    sessions.reset(telegramId);
+    logger.info("open_ride_cancelled", {
+      telegramId,
+      userId: session.userId,
+      rideId: cancelledRide.id,
+      source: "status",
+    });
+    await ctx.editMessageText("Your ride offer is cancelled.");
+    const user = repo.getUserById(session.userId);
+    if (user) await showMainMenu(ctx, user.firstName);
+  });
+
+  bot.action("cancel_open_request", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const cancelledRequest = repo.cancelOpenRideRequestForRider(session.userId);
+    if (!cancelledRequest) {
+      await ctx.editMessageText("No open ride request to cancel.");
+      return;
+    }
+
+    sessions.reset(telegramId);
+    logger.info("open_ride_request_cancelled", {
+      telegramId,
+      userId: session.userId,
+      requestId: cancelledRequest.id,
+      source: "status",
+    });
+    await ctx.editMessageText("Your ride request is cancelled.");
+    const user = repo.getUserById(session.userId);
+    if (user) await showMainMenu(ctx, user.firstName);
+  });
+
   bot.action("delete_confirm", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
@@ -225,6 +299,8 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       if (!match) return;
 
       repo.cancelMatch(matchId, session.userId, reason);
+      repo.updateRideStatus(match.rideId, "cancelled");
+      repo.updateRequestStatus(match.requestId, "cancelled");
       logger.info("ride_cancelled", {
         telegramId,
         userId: session.userId,

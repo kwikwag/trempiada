@@ -8,41 +8,31 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
 
   bot.command("ride", async (ctx) => {
     const telegramId = ctx.from!.id;
-    const session = sessions.get(telegramId);
-
-    if (!session.userId) {
-      logger.info("request_flow_blocked_unregistered", { telegramId });
-      await ctx.reply("You need to register first.", mainMenuKeyboard());
-      return;
-    }
-
-    sessions.setScene(telegramId, "request_pickup", {});
-    logger.info("request_flow_started", {
-      telegramId,
-      userId: session.userId,
-      source: "command",
-    });
-    await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
+    await startRideRequestFlow(ctx, telegramId, deps, "command");
   });
 
   bot.action("menu_ride", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
+    await startRideRequestFlow(ctx, telegramId, deps, "menu");
+  });
+
+  bot.action("switch_offer_to_request", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
+    if (!session.userId) return;
 
-    if (!session.userId) {
-      logger.info("request_flow_blocked_unregistered", { telegramId });
-      await ctx.reply("You need to register first.");
-      return;
-    }
-
-    sessions.setScene(telegramId, "request_pickup", {});
-    logger.info("request_flow_started", {
+    const cancelledRide = repo.cancelOpenRideForDriver(session.userId);
+    logger.info("open_ride_replaced_by_request_flow", {
       telegramId,
       userId: session.userId,
-      source: "menu",
+      rideId: cancelledRide?.id,
     });
-    await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
+
+    sessions.reset(telegramId);
+    await ctx.editMessageText("Your ride offer is cancelled. Let's set up your ride request.");
+    await startRideRequestFlow(ctx, telegramId, deps, "switch");
   });
 
   // --- Ride request: time window selection ---
@@ -56,6 +46,31 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
       const telegramId = ctx.from!.id;
       const session = sessions.get(telegramId);
       if (!session.userId) return;
+      if (session.scene !== "request_time") {
+        await ctx.reply(
+          "That ride request draft is no longer active. Use /ride to request a ride.",
+        );
+        return;
+      }
+
+      const activeMatch = repo.getActiveMatchForUser(session.userId);
+      const openRide = repo.getOpenRideForDriver(session.userId);
+      const openRequest = repo.getOpenRideRequestForRider(session.userId);
+      if (activeMatch || openRide || openRequest) {
+        logger.info("ride_request_post_blocked_conflicting_activity", {
+          telegramId,
+          userId: session.userId,
+          matchId: activeMatch?.id,
+          rideId: openRide?.id,
+          requestId: openRequest?.id,
+        });
+        sessions.reset(telegramId);
+        await ctx.reply(
+          "You already have an active ride, offer, or request. Use /status to manage it before requesting another ride.",
+          Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+        );
+        return;
+      }
 
       const { matching } = deps;
       const now = new Date();
@@ -135,6 +150,82 @@ export function registerRideRequestHandlers(bot: Telegraf, deps: BotDeps): void 
       });
     });
   }
+}
+
+export async function startRideRequestFlow(
+  ctx: Context,
+  telegramId: number,
+  deps: BotDeps,
+  source: "command" | "menu" | "switch" = "command",
+): Promise<void> {
+  const { repo, sessions, logger } = deps;
+  const session = sessions.get(telegramId);
+
+  if (!session.userId) {
+    logger.info("request_flow_blocked_unregistered", { telegramId });
+    await ctx.reply("You need to register first.", mainMenuKeyboard());
+    return;
+  }
+
+  const activeMatch = repo.getActiveMatchForUser(session.userId);
+  if (activeMatch) {
+    sessions.setScene(telegramId, "idle");
+    logger.info("request_flow_blocked_active_match", {
+      telegramId,
+      userId: session.userId,
+      matchId: activeMatch.id,
+    });
+    await ctx.reply(
+      "You're already matched for a ride. Finish or cancel that ride before requesting another one.",
+      Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+    );
+    return;
+  }
+
+  const openRide = repo.getOpenRideForDriver(session.userId);
+  if (openRide) {
+    sessions.setScene(telegramId, "idle");
+    logger.info("request_flow_blocked_open_ride", {
+      telegramId,
+      userId: session.userId,
+      rideId: openRide.id,
+    });
+    await ctx.reply(
+      "You're currently offering a ride. To request a ride as a rider, cancel that offer first.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Cancel offer and request", "switch_offer_to_request")],
+        [Markup.button.callback("Review riders", "review_riders")],
+        [Markup.button.callback("Keep my offer", "menu_status")],
+      ]),
+    );
+    return;
+  }
+
+  const openRequest = repo.getOpenRideRequestForRider(session.userId);
+  if (openRequest) {
+    sessions.setScene(telegramId, "idle");
+    logger.info("request_flow_blocked_open_request", {
+      telegramId,
+      userId: session.userId,
+      requestId: openRequest.id,
+    });
+    await ctx.reply(
+      "You already have an open ride request. Wait for a driver, or cancel it before creating a new one.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Cancel request", "cancel_open_request")],
+        [Markup.button.callback("Show my status", "menu_status")],
+      ]),
+    );
+    return;
+  }
+
+  sessions.setScene(telegramId, "request_pickup", {});
+  logger.info("request_flow_started", {
+    telegramId,
+    userId: session.userId,
+    source,
+  });
+  await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
 }
 
 export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Promise<boolean> {

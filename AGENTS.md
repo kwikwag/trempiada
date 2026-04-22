@@ -62,6 +62,7 @@ src/
 - **Message relay**: During active rides, non-command messages forwarded between parties through the bot (no personal contact shared).
 - **Anti-gaming**: Min 5km ride distance, same-pair 24h cooldown, cancellation tracking, simultaneous rating reveal.
 - **Logging**: Server-side logs are structured JSON via Pino through `src/logger.ts`. Do not log raw Telegram message text, confirmation codes, phone numbers, license plates, Telegram file IDs, or precise personal location values. Log metadata, IDs, timings, state transitions, aggregate matching counters, and external service failures.
+- **Dev impersonation**: Dev-mode persona switching rewrites `ctx.from.id` before domain handlers run. Domain handlers should use the effective `ctx.from.id`; outbound cross-user messages should use `notify()`. Unsafe dev-only database operations live in `DevRepository`, not the regular `Repository`; the dev menu includes a confirmed hard delete for the current effective identity's database rows and session data.
 
 ## Environment Variables
 
@@ -88,6 +89,8 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 - A **main menu** (inline keyboard) is shown after: `/start`, registration, ride completion, cancellation
 - A **persistent SOS reply keyboard** is shown to both parties from match acceptance until ride end or cancellation — it is the only reply keyboard used and must be explicitly removed with `Markup.removeKeyboard()` on ride conclusion
 - `showMainMenu(ctx, name)` is the canonical way to return a user to idle state — prefer it over ad-hoc text prompts
+- A user can have only one active ride activity at a time: matched ride, open driver offer, or open rider request. Starting the opposite role should guide them to cancel/switch first, not create a second active activity.
+- `showStatus(ctx, userId, repo)` is the canonical state summary and should include the user's role, route, current state, and the obvious next action buttons.
 
 ## Tests
 

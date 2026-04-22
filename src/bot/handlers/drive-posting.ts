@@ -22,6 +22,54 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await startDrivePostingFlow(ctx, ctx.from!.id, deps);
   });
 
+  bot.action("switch_request_to_drive", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const cancelledRequest = repo.cancelOpenRideRequestForRider(session.userId);
+    logger.info("request_replaced_by_drive_flow", {
+      telegramId,
+      userId: session.userId,
+      requestId: cancelledRequest?.id,
+    });
+
+    const pendingWazeDriveUrl = session.data.pendingWazeDriveUrl;
+    sessions.reset(telegramId);
+    await ctx.editMessageText("Your ride request is cancelled. Let's set up your ride offer.");
+
+    if (typeof pendingWazeDriveUrl === "string") {
+      await createWazeDriveFromUrl(ctx, telegramId, pendingWazeDriveUrl, deps);
+      return;
+    }
+    await startDrivePostingFlow(ctx, telegramId, deps);
+  });
+
+  bot.action("replace_offer_with_drive", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const cancelledRide = repo.cancelOpenRideForDriver(session.userId);
+    logger.info("open_ride_replaced_by_drive_flow", {
+      telegramId,
+      userId: session.userId,
+      rideId: cancelledRide?.id,
+    });
+
+    const pendingWazeDriveUrl = session.data.pendingWazeDriveUrl;
+    sessions.reset(telegramId);
+    await ctx.editMessageText("Your previous ride offer is cancelled. Let's set up the new one.");
+
+    if (typeof pendingWazeDriveUrl === "string") {
+      await createWazeDriveFromUrl(ctx, telegramId, pendingWazeDriveUrl, deps);
+      return;
+    }
+    await startDrivePostingFlow(ctx, telegramId, deps);
+  });
+
   // Driver taps "Review riders" from a notification
   bot.action("review_riders", async (ctx) => {
     await ctx.answerCbQuery();
@@ -29,7 +77,16 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     const session = sessions.get(telegramId);
     if (!session.userId) return;
 
-    const activeRide = repo.getActiveRideForDriver(session.userId);
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    if (activeMatch) {
+      await ctx.reply(
+        "You're already matched for a ride. Finish or cancel it before reviewing more riders.",
+        Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+      );
+      return;
+    }
+
+    const activeRide = repo.getOpenRideForDriver(session.userId);
     if (!activeRide) {
       logger.info("review_riders_without_active_ride", {
         telegramId,
@@ -88,8 +145,11 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("post_ride", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    const review = rideReviewContent(telegramId, sessions);
-    await ctx.editMessageText(`${review.text}Ride posted! ✅ Searching for riders...`);
+    const session = sessions.get(telegramId);
+    if (session.scene !== "ride_review") {
+      await ctx.reply("That ride draft is no longer active. Use /drive to offer a ride.");
+      return;
+    }
     logger.info("ride_post_requested", { telegramId });
     await postRideFromSession(ctx, telegramId, deps);
   });
@@ -395,6 +455,58 @@ export async function ensureDriverReady(
     return null;
   }
 
+  const activeMatch = repo.getActiveMatchForUser(readySession.userId);
+  if (activeMatch) {
+    deps.sessions.setScene(telegramId, "idle");
+    deps.logger.info("driver_flow_blocked_active_match", {
+      telegramId,
+      userId: readySession.userId,
+      matchId: activeMatch.id,
+    });
+    await ctx.reply(
+      "You're already matched for a ride. Finish or cancel that ride before offering another one.",
+      Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+    );
+    return null;
+  }
+
+  const openRequest = repo.getOpenRideRequestForRider(readySession.userId);
+  if (openRequest) {
+    deps.sessions.setScene(telegramId, "idle", pendingData);
+    deps.logger.info("driver_flow_blocked_open_request", {
+      telegramId,
+      userId: readySession.userId,
+      requestId: openRequest.id,
+    });
+    await ctx.reply(
+      "You're currently requesting a ride. To offer a ride as a driver, cancel that request first.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Cancel request and offer", "switch_request_to_drive")],
+        [Markup.button.callback("Keep my request", "menu_status")],
+      ]),
+    );
+    return null;
+  }
+
+  const openRide = repo.getOpenRideForDriver(readySession.userId);
+  if (openRide) {
+    deps.sessions.setScene(telegramId, "idle", pendingData);
+    deps.logger.info("driver_flow_blocked_open_ride", {
+      telegramId,
+      userId: readySession.userId,
+      rideId: openRide.id,
+    });
+    await ctx.reply(
+      "You already have an open ride offer. You can review riders for it, or replace it with a new offer.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("Review riders", "review_riders")],
+        [Markup.button.callback("Replace offer", "replace_offer_with_drive")],
+        [Markup.button.callback("Keep current offer", "menu_status")],
+      ]),
+    );
+    return null;
+  }
+
   const car = repo.getActiveCar(readySession.userId);
   if (!car) {
     deps.logger.info("driver_flow_needs_car_registration", {
@@ -546,6 +658,28 @@ async function postRideFromSession(ctx: Context, telegramId: number, deps: BotDe
   const { repo, sessions, matching, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId) return;
+
+  const activeMatch = repo.getActiveMatchForUser(session.userId);
+  const openRequest = repo.getOpenRideRequestForRider(session.userId);
+  const openRide = repo.getOpenRideForDriver(session.userId);
+  if (activeMatch || openRequest || openRide) {
+    logger.info("ride_post_blocked_conflicting_activity", {
+      telegramId,
+      userId: session.userId,
+      matchId: activeMatch?.id,
+      requestId: openRequest?.id,
+      rideId: openRide?.id,
+    });
+    await ctx.reply(
+      "You already have an active ride, offer, or request. Use /status to manage it before posting another ride.",
+      Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+    );
+    sessions.reset(telegramId);
+    return;
+  }
+
+  const review = rideReviewContent(telegramId, sessions);
+  await ctx.editMessageText(`${review.text}Ride posted! ✅ Searching for riders...`);
 
   const d = session.data;
   const ride = repo.createRide({
