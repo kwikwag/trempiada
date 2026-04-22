@@ -138,7 +138,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
       sessions.setScene(telegramId, "ride_review");
 
       const review = rideReviewContent(telegramId, sessions);
-      await ctx.editMessageText(review.text, review.keyboard);
+      await ctx.editMessageText(review.text, review.extra);
       logger.info("ride_departure_selected", {
         telegramId,
         minutesFromNow: minutes,
@@ -171,15 +171,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await postRideFromSession(ctx, telegramId, deps);
   });
 
-  // --- Edit ride review ---
-  bot.action("edit_ride", async (ctx) => {
-    await ctx.answerCbQuery();
-    const telegramId = ctx.from!.id;
-    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
-
-    await showRideEditOptions(ctx, telegramId, deps);
-  });
-
+  // --- Edit ride fields ---
   bot.action("edit_ride_seats", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
@@ -202,35 +194,32 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await ctx.editMessageText("When are you leaving?", rideDepartureKeyboard());
   });
 
-  bot.action("edit_ride_route", async (ctx) => {
+  bot.action("edit_ride_origin", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
     if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
-    const session = sessions.get(telegramId);
-
-    sessions.setScene(telegramId, "ride_origin", {
-      editingRideId: session.data.editingRideId,
-      carId: session.data.carId,
-      seats: session.data.seats,
-      carSeatCount: session.data.carSeatCount,
-      maxDetour: session.data.maxDetour,
-    });
-    logger.info("ride_route_edit_requested", {
+    sessions.updateData(telegramId, { routeEditMode: "origin-only" });
+    sessions.setScene(telegramId, "ride_origin");
+    logger.info("ride_origin_edit_requested", {
       telegramId,
-      userId: session.userId,
+      userId: sessions.get(telegramId).userId,
     });
     await ctx.editMessageText(
-      "Send me your starting point again.\n\n📍 Drop a pin or type an address.",
+      "Send me your new starting point.\n\n📍 Drop a pin or type an address.",
     );
   });
 
-  bot.action("edit_ride_back", async (ctx) => {
+  bot.action("edit_ride_dest", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
     if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
-    sessions.setScene(telegramId, "ride_review");
-    const review = rideReviewContent(telegramId, sessions);
-    await ctx.editMessageText(review.text, review.keyboard);
+    sessions.updateData(telegramId, { routeEditMode: "dest-only" });
+    sessions.setScene(telegramId, "ride_destination");
+    logger.info("ride_dest_edit_requested", {
+      telegramId,
+      userId: sessions.get(telegramId).userId,
+    });
+    await ctx.editMessageText("Send me your new destination.\n\n📍 Drop a pin or type an address.");
   });
 
   // --- Cancel ride posting flow ---
@@ -302,20 +291,7 @@ async function startOpenRideEditFlow(
     rideId: openRide.id,
   });
   const review = rideReviewContent(telegramId, deps.sessions);
-  await ctx.editMessageText(review.text, review.keyboard);
-}
-
-async function showRideEditOptions(ctx: Context, telegramId: number, deps: BotDeps): Promise<void> {
-  const review = rideReviewContent(telegramId, deps.sessions);
-  await ctx.editMessageText(
-    `${review.text}What do you want to modify?`,
-    Markup.inlineKeyboard([
-      [Markup.button.callback("Seats available", "edit_ride_seats")],
-      [Markup.button.callback("Departure time", "edit_ride_departure")],
-      [Markup.button.callback("Route", "edit_ride_route")],
-      [Markup.button.callback("Back to review", "edit_ride_back")],
-    ]),
-  );
+  await ctx.editMessageText(review.text, review.extra);
 }
 
 async function ensurePostedRideStillEditable(
@@ -397,13 +373,29 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
       originLng: loc.lng,
       originLabel: loc.label,
     });
-    sessions.setScene(telegramId, "ride_destination");
     logger.info("ride_origin_set", {
       telegramId,
       userId: session.userId,
       source: "location" in msg ? "pin" : "text",
       labelLength: loc.label.length,
     });
+
+    if (session.data.routeEditMode === "origin-only") {
+      const routeResult = await routing.getRoute(
+        { lat: loc.lat, lng: loc.lng },
+        { lat: session.data.destLat, lng: session.data.destLng },
+      );
+      sessions.updateData(telegramId, {
+        routeGeometry: routeResult?.geometry || null,
+        estimatedDuration: routeResult?.durationSeconds || null,
+        routeEditMode: undefined,
+      });
+      sessions.setScene(telegramId, "ride_review");
+      await replyWithRideReview(ctx, telegramId, sessions);
+      return true;
+    }
+
+    sessions.setScene(telegramId, "ride_destination");
     await ctx.reply("Got it. And your destination? (drop a pin or type an address)");
     return true;
   }
@@ -434,7 +426,6 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
       routeGeometry: routeResult?.geometry || null,
       estimatedDuration: routeResult?.durationSeconds || null,
     });
-    sessions.setScene(telegramId, "ride_departure");
     logger.info("ride_destination_set", {
       telegramId,
       userId: session.userId,
@@ -444,6 +435,14 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
       estimatedDurationSeconds: routeResult?.durationSeconds,
     });
 
+    if (session.data.routeEditMode === "dest-only") {
+      sessions.updateData(telegramId, { routeEditMode: undefined });
+      sessions.setScene(telegramId, "ride_review");
+      await replyWithRideReview(ctx, telegramId, sessions);
+      return true;
+    }
+
+    sessions.setScene(telegramId, "ride_departure");
     await ctx.reply(
       `${session.data.originLabel} → ${loc.label}\n` +
         (routeResult ? `🕐 About ${formatDuration(routeResult.durationSeconds)}\n\n` : `\n`) +
@@ -538,6 +537,10 @@ function setRideReviewFromRide(telegramId: number, ride: Ride, deps: BotDeps): v
     routeGeometry: ride.routeGeometry,
     estimatedDuration: ride.estimatedDuration,
     departureTime: ride.departureTime,
+    originalSeats: ride.availableSeats,
+    originalDepartureTime: ride.departureTime,
+    originalOriginLabel: ride.originLabel,
+    originalDestLabel: ride.destLabel,
   });
 }
 

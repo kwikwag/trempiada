@@ -245,25 +245,57 @@ function setRequestReviewFromRequest(
     dropoffLabel: request.dropoffLabel,
     earliestDeparture: request.earliestDeparture,
     latestDeparture: request.latestDeparture,
+    originalPickupLabel: request.pickupLabel,
+    originalDropoffLabel: request.dropoffLabel,
+    originalEarliestDeparture: request.earliestDeparture,
+    originalLatestDeparture: request.latestDeparture,
   });
 }
 
 function requestReviewContent(telegramId: number, deps: BotDeps) {
   const session = deps.sessions.get(telegramId);
+  const isEditing = typeof session.data.editingRequestId === "number";
+
+  const pickupChanged = isEditing && session.data.pickupLabel !== session.data.originalPickupLabel;
+  const dropoffChanged =
+    isEditing && session.data.dropoffLabel !== session.data.originalDropoffLabel;
+  const timeChanged =
+    isEditing &&
+    (session.data.earliestDeparture !== session.data.originalEarliestDeparture ||
+      session.data.latestDeparture !== session.data.originalLatestDeparture);
+  const hasChanges = pickupChanged || dropoffChanged || timeChanged;
+
+  const b = (text: string, changed: boolean) => (changed ? `*${text}*` : text);
+  const timeWindow = `${formatRequestTime(session.data.earliestDeparture)}-${formatRequestTime(session.data.latestDeparture)}`;
+
   return {
     text:
       "Here's your ride request:\n\n" +
-      `📍 ${session.data.pickupLabel} → ${session.data.dropoffLabel}\n` +
-      `🕐 Window: ${formatRequestTime(session.data.earliestDeparture)}-${formatRequestTime(
-        session.data.latestDeparture,
-      )}\n\n`,
-    keyboard: Markup.inlineKeyboard([
-      [Markup.button.callback("Save changes ✅", "save_request_changes")],
-      [Markup.button.callback("Modify pickup", "edit_request_pickup")],
-      [Markup.button.callback("Modify dropoff", "edit_request_dropoff")],
-      [Markup.button.callback("Modify time window", "edit_request_time")],
-      [Markup.button.callback("Keep current request", "cancel_request_edit")],
-    ]),
+      b(
+        `📍 ${session.data.pickupLabel} → ${session.data.dropoffLabel}`,
+        pickupChanged || dropoffChanged,
+      ) +
+      "\n" +
+      b(`🕐 Window: ${timeWindow}`, timeChanged) +
+      "\n\n",
+    extra: {
+      parse_mode: "Markdown" as const,
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("✏️ Pickup", "edit_request_pickup")],
+        [Markup.button.callback("✏️ Dropoff", "edit_request_dropoff")],
+        [Markup.button.callback("✏️ Time window", "edit_request_time")],
+        [
+          Markup.button.callback(
+            isEditing ? "Save changes ✅" : "Post this request ✅",
+            "save_request_changes",
+          ),
+          Markup.button.callback(
+            isEditing ? (hasChanges ? "Discard changes" : "Keep current request") : "Cancel",
+            "cancel_request_edit",
+          ),
+        ],
+      ]),
+    },
   };
 }
 
@@ -276,10 +308,10 @@ async function renderRequestReview(
   if (!(await ensurePostedRequestStillEditable(ctx, telegramId, deps))) return;
   const review = requestReviewContent(telegramId, deps);
   if (mode === "edit") {
-    await ctx.editMessageText(review.text, review.keyboard);
+    await ctx.editMessageText(review.text, review.extra);
     return;
   }
-  await ctx.reply(review.text, review.keyboard);
+  await ctx.reply(review.text, review.extra);
 }
 
 async function ensurePostedRequestStillEditable(

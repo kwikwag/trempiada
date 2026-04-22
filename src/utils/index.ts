@@ -72,7 +72,9 @@ export function formatCarInfo(car: Car, masked: boolean = false): string {
   return `🚗 ${car.make} ${car.model}, ${car.color}${yearStr}\n🔢 Plate: ${plate}`;
 }
 
-/** Format a ride summary for review before posting */
+export type RideChangedField = "route" | "departure" | "seats";
+
+/** Format a ride summary for review before posting. Changed fields are bolded (Markdown). */
 export function formatRideSummary(
   originLabel: string,
   destLabel: string,
@@ -80,13 +82,16 @@ export function formatRideSummary(
   departureTime: string,
   seats: number,
   maxDetour: number,
+  changedFields?: Set<RideChangedField>,
 ): string {
   const duration = durationSeconds ? formatDuration(durationSeconds) : "calculating...";
   const depTime = formatDepartureTime(departureTime);
+  const b = (text: string, field: RideChangedField) =>
+    changedFields?.has(field) ? `*${text}*` : text;
   return [
-    `📍 ${originLabel} → ${destLabel}`,
-    `🕐 ${duration} drive, departing ${depTime}`,
-    `👥 ${seats} seat${seats > 1 ? "s" : ""} available`,
+    b(`📍 ${originLabel} → ${destLabel}`, "route"),
+    b(`🕐 ${duration} drive, departing ${depTime}`, "departure"),
+    b(`👥 ${seats} seat${seats > 1 ? "s" : ""} available`, "seats"),
     `↩️ Max detour: ${maxDetour} min`,
   ].join("\n");
 }

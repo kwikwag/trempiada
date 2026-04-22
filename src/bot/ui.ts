@@ -2,7 +2,7 @@ import { Markup } from "telegraf";
 import type { Context } from "telegraf";
 import type { Repository } from "../db/repository";
 import type { SessionManager } from "./session";
-import { formatTrustProfile, formatRideSummary } from "../utils";
+import { formatTrustProfile, formatRideSummary, type RideChangedField } from "../utils";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import type { Match, Ride, RideRequest, User } from "../types";
@@ -99,6 +99,21 @@ export async function handleSos(
 export function rideReviewContent(telegramId: number, sessions: SessionManager) {
   const session = sessions.get(telegramId);
   const isEditingPostedRide = typeof session.data.editingRideId === "number";
+
+  let changedFields: Set<RideChangedField> | undefined;
+  if (isEditingPostedRide) {
+    changedFields = new Set();
+    if (session.data.seats !== session.data.originalSeats) changedFields.add("seats");
+    if (session.data.departureTime !== session.data.originalDepartureTime)
+      changedFields.add("departure");
+    if (
+      session.data.originLabel !== session.data.originalOriginLabel ||
+      session.data.destLabel !== session.data.originalDestLabel
+    )
+      changedFields.add("route");
+  }
+
+  const hasChanges = (changedFields?.size ?? 0) > 0;
   const summary = formatRideSummary(
     session.data.originLabel,
     session.data.destLabel,
@@ -106,25 +121,34 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
     session.data.departureTime,
     session.data.seats,
     session.data.maxDetour,
+    changedFields,
   );
 
   return {
     text: `Here's your ride:\n\n${summary}\n\n`,
-    keyboard: Markup.inlineKeyboard([
-      [
-        Markup.button.callback(
-          isEditingPostedRide ? "Save changes ✅" : "Post this ride ✅",
-          "post_ride",
-        ),
-      ],
-      [Markup.button.callback("Edit something ✏️", "edit_ride")],
-      [
-        Markup.button.callback(
-          isEditingPostedRide ? "Keep current offer" : "Cancel",
-          "cancel_ride_flow",
-        ),
-      ],
-    ]),
+    extra: {
+      parse_mode: "Markdown" as const,
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("✏️ Seats available", "edit_ride_seats")],
+        [Markup.button.callback("✏️ Departure time", "edit_ride_departure")],
+        [Markup.button.callback("✏️ Origin", "edit_ride_origin")],
+        [Markup.button.callback("✏️ Destination", "edit_ride_dest")],
+        [
+          Markup.button.callback(
+            isEditingPostedRide ? "Save changes ✅" : "Post this ride ✅",
+            "post_ride",
+          ),
+          Markup.button.callback(
+            isEditingPostedRide
+              ? hasChanges
+                ? "Discard changes"
+                : "Keep current offer"
+              : "Cancel",
+            "cancel_ride_flow",
+          ),
+        ],
+      ]),
+    },
   };
 }
 
@@ -134,7 +158,7 @@ export async function replyWithRideReview(
   sessions: SessionManager,
 ): Promise<void> {
   const review = rideReviewContent(telegramId, sessions);
-  await ctx.reply(review.text, review.keyboard);
+  await ctx.reply(review.text, review.extra);
 }
 
 export async function showStatus(ctx: Context, userId: number, repo: Repository): Promise<void> {
