@@ -17,7 +17,7 @@ export function mainMenuKeyboard() {
       Markup.button.callback("🛑 Request a ride", "menu_ride"),
     ],
     [
-      Markup.button.callback("👤 Trust profile", "menu_trust"),
+      Markup.button.callback("👤 My profile", "menu_profile"),
       Markup.button.callback("📊 My status", "menu_status"),
     ],
   ]);
@@ -38,29 +38,41 @@ export async function showMainMenu(ctx: Context, name: string): Promise<void> {
   await ctx.reply(`What would you like to do, ${name}?`, mainMenuKeyboard());
 }
 
-export async function renderTrustProfile(
+export async function renderProfile(
   ctx: Context,
   { userId, repo }: { userId: number; repo: Repository },
 ): Promise<void> {
   const user = repo.getUserById(userId)!;
   const verifications = repo.getVerifications(userId);
-  const profile = formatTrustProfile({ user, verifications, forPublic: false });
   const verifiedTypes = new Set(verifications.map((v) => v.type));
-  const buttons = [];
 
+  const genderLabel = user.gender
+    ? { male: "Male", female: "Female", other: "Other" }[user.gender]
+    : "Not set";
+  const photoStatus = verifiedTypes.has("photo") ? "✅" : "❌";
+
+  const personalInfo = [
+    `👤 *${user.firstName}*`,
+    `⚧ Gender: ${genderLabel}`,
+    `📸 Photo: ${photoStatus}`,
+  ].join("\n");
+
+  const verStats = formatTrustProfile({ user, verifications, forPublic: false });
+
+  const verButtons = [];
   if (!verifiedTypes.has("facebook"))
-    buttons.push([Markup.button.callback("Connect Facebook", "verify_facebook")]);
+    verButtons.push([Markup.button.callback("Connect Facebook", "verify_facebook")]);
   if (!verifiedTypes.has("linkedin"))
-    buttons.push([Markup.button.callback("Connect LinkedIn", "verify_linkedin")]);
+    verButtons.push([Markup.button.callback("Connect LinkedIn", "verify_linkedin")]);
   if (!verifiedTypes.has("google"))
-    buttons.push([Markup.button.callback("Connect Google", "verify_google")]);
+    verButtons.push([Markup.button.callback("Connect Google", "verify_google")]);
   if (!verifiedTypes.has("email"))
-    buttons.push([Markup.button.callback("Add email", "verify_email")]);
+    verButtons.push([Markup.button.callback("Add email", "verify_email")]);
 
   for (const v of verifications) {
     if (["facebook", "linkedin", "google", "email"].includes(v.type)) {
       const icon = v.sharedWithRiders ? "👁" : "🙈";
-      buttons.push([
+      verButtons.push([
         Markup.button.callback(
           `${icon} ${v.type} — ${v.sharedWithRiders ? "visible to riders" : "hidden"}`,
           `toggle_vis_${v.type}`,
@@ -69,10 +81,12 @@ export async function renderTrustProfile(
     }
   }
 
+  verButtons.push([Markup.button.callback("🔄 Restart profile", "restart_profile")]);
+
   await ctx.reply(
-    `Your trust profile:\n\n${profile}\n\n` +
-      (buttons.length > 0 ? `Manage your verifications:` : `All verifications complete! ✅`),
-    buttons.length > 0 ? Markup.inlineKeyboard(buttons) : undefined,
+    `*My Profile*\n\n${personalInfo}\n\n*Verifications & Trust*\n${verStats}` +
+      (verButtons.length > 1 ? `\n\nManage your verifications:` : ""),
+    { parse_mode: "Markdown", ...Markup.inlineKeyboard(verButtons) },
   );
 }
 
@@ -137,6 +151,7 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
         [Markup.button.callback("✏️ Departure time", "edit_ride_departure")],
         [Markup.button.callback("✏️ Origin", "edit_ride_origin")],
         [Markup.button.callback("✏️ Destination", "edit_ride_dest")],
+        [Markup.button.callback("🚗 Change car", "edit_ride_car")],
         [
           Markup.button.callback(
             isEditingPostedRide ? "Save changes ✅" : "Post this ride ✅",

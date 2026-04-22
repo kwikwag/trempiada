@@ -1,8 +1,9 @@
 import { Markup } from "telegraf";
 import type { Telegraf, Context } from "telegraf";
 import type { BotDeps } from "../deps";
-import { showMainMenu } from "../ui";
+import { showMainMenu, replyWithRideReview } from "../ui";
 import { formatCarInfo } from "../../utils";
+import type { SessionState } from "../../types";
 
 type StartDriveFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
 type StartRideFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
@@ -29,6 +30,38 @@ export function registerRegistrationHandlers({
 }: RegisterRegistrationHandlersArgs): { handleMessage: (ctx: Context) => Promise<boolean> } {
   const { repo, sessions, logger, carRecognition } = deps;
 
+  async function showRestartConfirmation(ctx: Context, session: SessionState): Promise<void> {
+    const { newName, newGender, newPhotoFileId } = session.data;
+    const verifications = session.userId ? repo.getVerifications(session.userId) : [];
+    const socialTypes = verifications
+      .filter((v) => ["facebook", "linkedin", "google", "email"].includes(v.type))
+      .map((v) => v.type);
+    const activeCar = session.userId ? repo.getActiveCar(session.userId) : null;
+
+    const lines = [
+      "Here's your new profile:\n",
+      `👤 Name: ${newName}`,
+      `⚧ Gender: ${{ male: "Male", female: "Female", other: "Other" }[newGender as string] ?? "Not set"}`,
+      `📸 Photo: ${newPhotoFileId ? "✅" : "❌"}`,
+    ];
+
+    const clearing: string[] = [];
+    if (activeCar) clearing.push("car registration");
+    if (socialTypes.length > 0)
+      clearing.push(`${socialTypes.join(", ")} verification${socialTypes.length > 1 ? "s" : ""}`);
+    if (clearing.length > 0) {
+      lines.push(`\nThis will also clear your ${clearing.join(" and ")}.`);
+    }
+
+    await ctx.reply(
+      lines.join("\n"),
+      Markup.inlineKeyboard([
+        [Markup.button.callback("✅ Confirm, update my profile", "restart_apply")],
+        [Markup.button.callback("✗ Cancel, keep current profile", "restart_cancel")],
+      ]),
+    );
+  }
+
   async function afterProfileComplete(ctx: Context, telegramId: number): Promise<void> {
     const session = sessions.get(telegramId);
     const pendingAction = session.data.pendingAction as string | undefined;
@@ -50,6 +83,31 @@ export function registerRegistrationHandlers({
       const telegramId = ctx.from!.id;
       const session = sessions.get(telegramId);
       if (!session.userId) return;
+
+      // Restart flow: store gender temporarily, don't write to DB yet
+      if (session.data.restartMode) {
+        sessions.updateData(telegramId, { newGender: g });
+        const updatedSession = sessions.get(telegramId);
+        // Try Telegram photo first
+        try {
+          const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
+          if (profilePhotos.total_count > 0) {
+            const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
+            sessions.updateData(telegramId, { newPhotoFileId: largest.file_id });
+            await ctx.editMessageText("Got it! 👍");
+            await showRestartConfirmation(ctx, sessions.get(telegramId));
+            return;
+          }
+        } catch {
+          // fall through to manual upload
+        }
+        sessions.setScene({ telegramId, scene: "registration_photo", data: updatedSession.data });
+        await ctx.editMessageText(
+          "Got it.\n\nNow, send me a photo of yourself. " +
+            "This helps the other party recognize you.",
+        );
+        return;
+      }
 
       repo.updateUserProfile(session.userId, { gender: g });
       logger.info("profile_gender_set", { telegramId, userId: session.userId, gender: g });
@@ -117,6 +175,24 @@ export function registerRegistrationHandlers({
       year: car.year,
     });
 
+    // Changing car during ride posting — restore saved ride data with new car
+    if (session.data.changingCarForRide) {
+      const saved = (session.data.savedRideData ?? {}) as Record<string, unknown>;
+      sessions.setScene({
+        telegramId,
+        scene: "ride_review",
+        data: {
+          ...saved,
+          carId: car.id,
+          carSeatCount: car.seatCount,
+          seats: Math.min(Number(saved.seats ?? car.seatCount), car.seatCount),
+        },
+      });
+      await ctx.editMessageText(`Car updated! ✅\n\n` + formatCarInfo(car));
+      await replyWithRideReview(ctx, { telegramId, sessions });
+      return;
+    }
+
     await ctx.editMessageText(`Car registered! ✅\n\n` + formatCarInfo(car));
 
     if (session.data.pendingWazeDriveUrl) {
@@ -131,7 +207,13 @@ export function registerRegistrationHandlers({
   bot.action("car_confirm_retry", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
-    sessions.setScene({ telegramId, scene: "car_registration_photo", data: {} });
+    const session = sessions.get(telegramId);
+    const { changingCarForRide, savedRideData } = session.data;
+    sessions.setScene({
+      telegramId,
+      scene: "car_registration_photo",
+      data: changingCarForRide ? { changingCarForRide, savedRideData } : {},
+    });
     await ctx.editMessageText("No problem. Send another photo of your car.");
   });
 
@@ -171,11 +253,39 @@ export function registerRegistrationHandlers({
     const session = sessions.get(telegramId);
     const msg = (ctx as any).message;
 
+    // --- Restart flow: collect new name ---
+    if (session.scene === "profile_restart_name" && "text" in msg) {
+      const name = msg.text.trim();
+      if (!name || name.length > 64) {
+        await ctx.reply("Please enter a valid name (up to 64 characters).");
+        return true;
+      }
+      sessions.updateData(telegramId, { newName: name, restartMode: true });
+      await ctx.reply(
+        "Got it. What's your gender?",
+        Markup.inlineKeyboard([
+          [Markup.button.callback("Male", "gender_male")],
+          [Markup.button.callback("Female", "gender_female")],
+          [Markup.button.callback("Other", "gender_other")],
+        ]),
+      );
+      return true;
+    }
+
+    if (session.scene === "profile_restart_name") return true; // ignore non-text
+
     // --- Profile: photo (manual upload when no Telegram profile photo) ---
     if (session.scene === "registration_photo" && "photo" in msg) {
       const photos = msg.photo;
       const largest = photos[photos.length - 1];
       if (!session.userId) return true;
+
+      // Restart flow: store temporarily, show confirmation
+      if (session.data.restartMode) {
+        sessions.updateData(telegramId, { newPhotoFileId: largest.file_id });
+        await showRestartConfirmation(ctx, sessions.get(telegramId));
+        return true;
+      }
 
       repo.updateUserProfile(session.userId, { photoFileId: largest.file_id });
       const verifications = repo.getVerifications(session.userId);

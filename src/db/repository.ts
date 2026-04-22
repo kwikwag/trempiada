@@ -263,6 +263,24 @@ export class Repository {
     this.db.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`).run(...values);
   }
 
+  clearUserProfileData(userId: number): void {
+    this.db
+      .prepare("UPDATE users SET gender = NULL, photo_file_id = NULL WHERE id = ?")
+      .run(userId);
+  }
+
+  deactivateAllCarsForUser(userId: number): void {
+    this.db.prepare("UPDATE cars SET is_active = 0 WHERE user_id = ?").run(userId);
+  }
+
+  removeVerificationsByTypes(userId: number, types: VerificationType[]): void {
+    if (types.length === 0) return;
+    const placeholders = types.map(() => "?").join(", ");
+    this.db
+      .prepare(`DELETE FROM trust_verifications WHERE user_id = ? AND type IN (${placeholders})`)
+      .run(userId, ...types);
+  }
+
   adjustPoints(userId: number, delta: number): void {
     this.db
       .prepare("UPDATE users SET points_balance = points_balance + ? WHERE id = ?")

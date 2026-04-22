@@ -175,7 +175,8 @@ export type BotScene =
   | "in_ride_relay" // Message relay mode
   | "rating"
   | "cancel_reason"
-  | "dispute_description";
+  | "dispute_description"
+  | "profile_restart_name";
 
 export interface SessionState {
   scene: BotScene;

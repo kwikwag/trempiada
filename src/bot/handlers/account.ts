@@ -7,7 +7,7 @@ import {
   mainMenuKeyboard,
   showMainMenu,
   replyNotRegistered,
-  renderTrustProfile,
+  renderProfile,
   handleSos,
   showStatus,
   cancellationKeyboard,
@@ -63,7 +63,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     await showMainMenu(ctx, telegramName);
   });
 
-  bot.command("trust", async (ctx) => {
+  bot.command("profile", async (ctx) => {
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
 
@@ -72,7 +72,50 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       return;
     }
 
-    await renderTrustProfile(ctx, { userId: session.userId, repo });
+    await renderProfile(ctx, { userId: session.userId, repo });
+  });
+
+  bot.command("restart", async (ctx) => {
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) {
+      await replyNotRegistered(ctx);
+      return;
+    }
+
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    if (activeMatch) {
+      await ctx.reply(
+        "You have an active ride. Please cancel it before restarting your profile.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel ride", "cancel_from_status")]]),
+      );
+      return;
+    }
+
+    const openRide = repo.getOpenRideForDriver(session.userId);
+    if (openRide) {
+      await ctx.reply(
+        "You have an open ride offer. Please cancel it before restarting your profile.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel offer", "cancel_open_ride")]]),
+      );
+      return;
+    }
+
+    const openRequest = repo.getOpenRideRequestForRider(session.userId);
+    if (openRequest) {
+      await ctx.reply(
+        "You have an open ride request. Please cancel it before restarting your profile.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel request", "cancel_open_request")]]),
+      );
+      return;
+    }
+
+    const user = repo.getUserById(session.userId)!;
+    sessions.setScene({ telegramId, scene: "profile_restart_name" });
+    await ctx.reply(
+      `Let's update your profile.\n\nWhat's your name?\n\nCurrent: *${user.firstName}*`,
+      { parse_mode: "Markdown" },
+    );
   });
 
   bot.command("sos", async (ctx) => {
@@ -178,12 +221,97 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
   });
 
   // Main menu callbacks
-  bot.action("menu_trust", async (ctx) => {
+  bot.action("menu_profile", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
     const session = sessions.get(telegramId);
     if (!session.userId) return;
-    await renderTrustProfile(ctx, { userId: session.userId, repo });
+    await renderProfile(ctx, { userId: session.userId, repo });
+  });
+
+  bot.action("restart_profile", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    if (activeMatch) {
+      await ctx.reply(
+        "You have an active ride. Please cancel it before restarting your profile.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel ride", "cancel_from_status")]]),
+      );
+      return;
+    }
+
+    const openRide = repo.getOpenRideForDriver(session.userId);
+    if (openRide) {
+      await ctx.reply(
+        "You have an open ride offer. Please cancel it before restarting your profile.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel offer", "cancel_open_ride")]]),
+      );
+      return;
+    }
+
+    const openRequest = repo.getOpenRideRequestForRider(session.userId);
+    if (openRequest) {
+      await ctx.reply(
+        "You have an open ride request. Please cancel it before restarting your profile.",
+        Markup.inlineKeyboard([[Markup.button.callback("Cancel request", "cancel_open_request")]]),
+      );
+      return;
+    }
+
+    const user = repo.getUserById(session.userId)!;
+    sessions.setScene({ telegramId, scene: "profile_restart_name" });
+    await ctx.reply(
+      `Let's update your profile.\n\nWhat's your name?\n\nCurrent: *${user.firstName}*`,
+      { parse_mode: "Markdown" },
+    );
+  });
+
+  bot.action("restart_apply", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    const { newName, newGender, newPhotoFileId } = session.data;
+
+    // Clear gender/photo first (clearUserProfileData sets them null), then re-apply new values
+    repo.clearUserProfileData(session.userId);
+    repo.updateUserProfile(session.userId, { firstName: newName as string });
+    if (newGender) repo.updateUserProfile(session.userId, { gender: newGender as any });
+    if (newPhotoFileId)
+      repo.updateUserProfile(session.userId, { photoFileId: newPhotoFileId as string });
+
+    repo.deactivateAllCarsForUser(session.userId);
+    repo.removeVerificationsByTypes(session.userId, [
+      "car",
+      "photo",
+      "facebook",
+      "linkedin",
+      "google",
+      "email",
+    ]);
+    if (newPhotoFileId) repo.addVerification({ userId: session.userId, type: "photo" });
+
+    logger.info("profile_restarted", { telegramId, userId: session.userId });
+    sessions.reset(telegramId);
+
+    const user = repo.getUserById(session.userId)!;
+    await ctx.editMessageText("✅ Profile updated!");
+    await showMainMenu(ctx, user.firstName);
+  });
+
+  bot.action("restart_cancel", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    sessions.reset(telegramId);
+    const session = sessions.get(telegramId);
+    const user = session.userId ? repo.getUserById(session.userId) : null;
+    await ctx.editMessageText("Profile update cancelled. Nothing was changed.");
+    if (user) await showMainMenu(ctx, user.firstName);
   });
 
   bot.action("menu_status", async (ctx) => {
@@ -419,6 +547,6 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     });
 
     await ctx.answerCbQuery(`${type} is now ${newState}`);
-    await renderTrustProfile(ctx, { userId: session.userId, repo });
+    await renderProfile(ctx, { userId: session.userId, repo });
   });
 }

@@ -223,6 +223,25 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await ctx.editMessageText("Send me your new destination.\n\n📍 Drop a pin or type an address.");
   });
 
+  bot.action("edit_ride_car", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return;
+    const session = sessions.get(telegramId);
+    logger.info("ride_car_change_requested", {
+      telegramId,
+      userId: session.userId,
+    });
+    sessions.setScene({
+      telegramId,
+      scene: "car_registration_photo",
+      data: { changingCarForRide: true, savedRideData: { ...session.data } },
+    });
+    await ctx.editMessageText(
+      "Send me a photo of your new car — make sure the rear license plate is visible.",
+    );
+  });
+
   // --- Cancel ride posting flow ---
   bot.action("cancel_ride_flow", async (ctx) => {
     await ctx.answerCbQuery();

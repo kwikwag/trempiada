@@ -248,7 +248,7 @@ export function registerHandlers({
       { command: "drive", description: "Offer a ride" },
       { command: "ride", description: "Request a ride" },
       { command: "status", description: "My status and points" },
-      { command: "trust", description: "Manage identity verifications" },
+      { command: "profile", description: "My profile and verifications" },
       { command: "cancel", description: "Cancel your current ride" },
       { command: "sos", description: "🚨 Emergency — call for help" },
       { command: "delete", description: "Delete my account" },
