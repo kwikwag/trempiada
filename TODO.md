@@ -18,6 +18,8 @@
 - [x] `tests/unit/session.test.ts` — `setScene`/`updateData`/`reset` transitions; `isInRelay`
 - [ ] `tests/unit/handlers/drive-posting.test.ts` — `edit_open_ride` loads an open offer into ride review with save-mode buttons; `postRideFromSession` while editing cancels the previous open offer and creates a replacement; matched or stale posted-offer edit callbacks reply that changes require cancelling the ride first.
 - [ ] `tests/unit/handlers/ride-request.test.ts` — `edit_open_request` blocks active matches with a cancel-first message; without a match, it loads the existing request into edit mode; pickup/dropoff/time edits return to request review without cancelling the open request; `save_request_changes` cancels the previous open request and creates the replacement.
+- [x] `tests/unit/handlers/registration.test.ts` — restart profile review asks active-car and social-account keep/remove questions before final confirmation; final confirmation text includes the selected keep/remove choices.
+- [x] `tests/unit/handlers/account.test.ts` — `restart_apply` keeps active cars and social verification rows when the restart choices are "No"; removes only car data when `restartRemoveCar` is true; removes only social verification rows when `restartRemoveSocials` is true.
 - [ ] `tests/unit/ui.test.ts` — `rideReviewContent` renders post vs save buttons based on `editingRideId`; `showStatus` includes modify actions for open driver offers and open rider requests.
 
 ## Ideas

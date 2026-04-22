@@ -4,6 +4,12 @@ import type { BotDeps } from "../deps";
 import { showMainMenu, replyWithRideReview } from "../ui";
 import { formatCarInfo } from "../../utils";
 import type { SessionState } from "../../types";
+import {
+  buildRestartConfirmationText,
+  formatVerificationTypes,
+  getSocialVerificationTypes,
+  nextRestartProfileChoice,
+} from "./restart-profile";
 
 type StartDriveFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
 type StartRideFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
@@ -30,36 +36,72 @@ export function registerRegistrationHandlers({
 }: RegisterRegistrationHandlersArgs): { handleMessage: (ctx: Context) => Promise<boolean> } {
   const { repo, sessions, logger, carRecognition } = deps;
 
-  async function showRestartConfirmation(ctx: Context, session: SessionState): Promise<void> {
-    const { newName, newGender, newPhotoFileId } = session.data;
+  async function showRestartConfirmation(
+    ctx: Context,
+    session: SessionState,
+    options: { edit?: boolean } = {},
+  ): Promise<void> {
+    const telegramId = ctx.from!.id;
+    sessions.setScene({ telegramId, scene: "profile_restart_confirm", data: session.data });
+
+    const { newName, newGender, newPhotoFileId, restartRemoveCar, restartRemoveSocials } =
+      session.data;
     const verifications = session.userId ? repo.getVerifications(session.userId) : [];
-    const socialTypes = verifications
-      .filter((v) => ["facebook", "linkedin", "google", "email"].includes(v.type))
-      .map((v) => v.type);
+    const socialTypes = getSocialVerificationTypes(verifications);
     const activeCar = session.userId ? repo.getActiveCar(session.userId) : null;
+    const nextChoice = nextRestartProfileChoice({
+      hasActiveCar: activeCar !== null,
+      socialTypes,
+      removeCar: restartRemoveCar,
+      removeSocials: restartRemoveSocials,
+    });
 
-    const lines = [
-      "Here's your new profile:\n",
-      `👤 Name: ${newName}`,
-      `⚧ Gender: ${{ male: "Male", female: "Female", other: "Other" }[newGender as string] ?? "Not set"}`,
-      `📸 Photo: ${newPhotoFileId ? "✅" : "❌"}`,
-    ];
-
-    const clearing: string[] = [];
-    if (activeCar) clearing.push("car registration");
-    if (socialTypes.length > 0)
-      clearing.push(`${socialTypes.join(", ")} verification${socialTypes.length > 1 ? "s" : ""}`);
-    if (clearing.length > 0) {
-      lines.push(`\nThis will also clear your ${clearing.join(" and ")}.`);
+    if (nextChoice === "car") {
+      const text =
+        "Remove your car from your profile?\n\n" +
+        (activeCar ? `${formatCarInfo(activeCar, true)}\n\n` : "") +
+        "If you remove it, you'll need to register a car again before offering rides.";
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback("Yes, remove it", "restart_remove_car_yes")],
+        [Markup.button.callback("No, keep it", "restart_remove_car_no")],
+        [Markup.button.callback("Cancel profile update", "restart_cancel")],
+      ]);
+      if (options.edit) await ctx.editMessageText(text, keyboard);
+      else await ctx.reply(text, keyboard);
+      return;
     }
 
-    await ctx.reply(
-      lines.join("\n"),
-      Markup.inlineKeyboard([
-        [Markup.button.callback("✅ Confirm, update my profile", "restart_apply")],
-        [Markup.button.callback("✗ Cancel, keep current profile", "restart_cancel")],
-      ]),
-    );
+    if (nextChoice === "socials") {
+      const text =
+        "Forget associations with the following social accounts?\n\n" +
+        `${formatVerificationTypes(socialTypes)}\n\n` +
+        "If you forget them, you'll need to verify those accounts again later.";
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback("Yes, forget them", "restart_remove_socials_yes")],
+        [Markup.button.callback("No, keep them", "restart_remove_socials_no")],
+        [Markup.button.callback("Cancel profile update", "restart_cancel")],
+      ]);
+      if (options.edit) await ctx.editMessageText(text, keyboard);
+      else await ctx.reply(text, keyboard);
+      return;
+    }
+
+    const text = buildRestartConfirmationText({
+      newName,
+      newGender,
+      newPhotoFileId,
+      hasActiveCar: activeCar !== null,
+      socialTypes,
+      removeCar: restartRemoveCar,
+      removeSocials: restartRemoveSocials,
+    });
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback("✅ Confirm, update my profile", "restart_apply")],
+      [Markup.button.callback("✗ Cancel, keep current profile", "restart_cancel")],
+    ]);
+
+    if (options.edit) await ctx.editMessageText(text, keyboard);
+    else await ctx.reply(text, keyboard);
   }
 
   async function afterProfileComplete(ctx: Context, telegramId: number): Promise<void> {
@@ -143,6 +185,29 @@ export function registerRegistrationHandlers({
 
       await ctx.editMessageText("Got it! 👍");
       await afterProfileComplete(ctx, telegramId);
+    });
+  }
+
+  // --- Restart profile choice callbacks ---
+  for (const choice of [true, false] as const) {
+    bot.action(`restart_remove_car_${choice ? "yes" : "no"}`, async (ctx) => {
+      await ctx.answerCbQuery();
+      const telegramId = ctx.from!.id;
+      const session = sessions.get(telegramId);
+      if (!session.userId || !session.data.restartMode) return;
+
+      sessions.updateData(telegramId, { restartRemoveCar: choice });
+      await showRestartConfirmation(ctx, sessions.get(telegramId), { edit: true });
+    });
+
+    bot.action(`restart_remove_socials_${choice ? "yes" : "no"}`, async (ctx) => {
+      await ctx.answerCbQuery();
+      const telegramId = ctx.from!.id;
+      const session = sessions.get(telegramId);
+      if (!session.userId || !session.data.restartMode) return;
+
+      sessions.updateData(telegramId, { restartRemoveSocials: choice });
+      await showRestartConfirmation(ctx, sessions.get(telegramId), { edit: true });
     });
   }
 
@@ -273,6 +338,11 @@ export function registerRegistrationHandlers({
     }
 
     if (session.scene === "profile_restart_name") return true; // ignore non-text
+
+    if (session.scene === "profile_restart_confirm") {
+      await ctx.reply("Please use the buttons to confirm or cancel your profile update.");
+      return true;
+    }
 
     // --- Profile: photo (manual upload when no Telegram profile photo) ---
     if (session.scene === "registration_photo" && "photo" in msg) {

@@ -176,7 +176,8 @@ export type BotScene =
   | "rating"
   | "cancel_reason"
   | "dispute_description"
-  | "profile_restart_name";
+  | "profile_restart_name"
+  | "profile_restart_confirm";
 
 export interface SessionState {
   scene: BotScene;

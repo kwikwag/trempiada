@@ -1,8 +1,9 @@
 import { Markup } from "telegraf";
 import type { Telegraf } from "telegraf";
 import type { BotDeps } from "../deps";
-import type { VerificationType } from "../../types";
+import type { Gender, VerificationType } from "../../types";
 import { POINTS } from "../../types";
+import { SOCIAL_VERIFICATION_TYPES } from "./restart-profile";
 import {
   mainMenuKeyboard,
   showMainMenu,
@@ -276,25 +277,32 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const session = sessions.get(telegramId);
     if (!session.userId) return;
 
-    const { newName, newGender, newPhotoFileId } = session.data;
+    const { newName, newGender, newPhotoFileId, restartRemoveCar, restartRemoveSocials } =
+      session.data;
+
+    if (typeof newName !== "string" || newName.trim().length === 0) {
+      sessions.reset(telegramId);
+      await ctx.editMessageText("This profile update expired. Start again when you're ready.");
+      return;
+    }
 
     // Clear gender/photo first (clearUserProfileData sets them null), then re-apply new values
     repo.clearUserProfileData(session.userId);
-    repo.updateUserProfile(session.userId, { firstName: newName as string });
-    if (newGender) repo.updateUserProfile(session.userId, { gender: newGender as any });
-    if (newPhotoFileId)
-      repo.updateUserProfile(session.userId, { photoFileId: newPhotoFileId as string });
+    repo.updateUserProfile(session.userId, { firstName: newName });
+    if (isGender(newGender)) repo.updateUserProfile(session.userId, { gender: newGender });
+    const hasNewPhoto = typeof newPhotoFileId === "string" && newPhotoFileId.length > 0;
+    if (hasNewPhoto) repo.updateUserProfile(session.userId, { photoFileId: newPhotoFileId });
 
-    repo.deactivateAllCarsForUser(session.userId);
-    repo.removeVerificationsByTypes(session.userId, [
-      "car",
-      "photo",
-      "facebook",
-      "linkedin",
-      "google",
-      "email",
-    ]);
-    if (newPhotoFileId) repo.addVerification({ userId: session.userId, type: "photo" });
+    const verificationTypesToRemove: VerificationType[] = ["photo"];
+    if (restartRemoveCar === true) {
+      repo.deactivateAllCarsForUser(session.userId);
+      verificationTypesToRemove.push("car");
+    }
+    if (restartRemoveSocials === true) {
+      verificationTypesToRemove.push(...SOCIAL_VERIFICATION_TYPES);
+    }
+    repo.removeVerificationsByTypes(session.userId, verificationTypesToRemove);
+    if (hasNewPhoto) repo.addVerification({ userId: session.userId, type: "photo" });
 
     logger.info("profile_restarted", { telegramId, userId: session.userId });
     sessions.reset(telegramId);
@@ -549,4 +557,8 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     await ctx.answerCbQuery(`${type} is now ${newState}`);
     await renderProfile(ctx, { userId: session.userId, repo });
   });
+}
+
+function isGender(value: unknown): value is Gender {
+  return value === "male" || value === "female" || value === "other";
 }
