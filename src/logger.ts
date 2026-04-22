@@ -1,3 +1,6 @@
+import pino from "pino";
+import type { Logger as PinoLogger } from "pino";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogContext = Record<string, unknown>;
 
@@ -7,13 +10,6 @@ export interface Logger {
   warn(message: string, context?: LogContext): void;
   error(message: string, context?: LogContext): void;
 }
-
-const LEVELS: Record<LogLevel, number> = {
-  debug: 10,
-  info: 20,
-  warn: 30,
-  error: 40,
-};
 
 export const noopLogger: Logger = {
   debug: () => {},
@@ -27,6 +23,21 @@ function parseLogLevel(value: string | undefined): LogLevel {
     return value;
   }
   return "info";
+}
+
+function createPinoLogger(level: LogLevel, stream: NodeJS.WritableStream): PinoLogger {
+  return pino(
+    {
+      base: undefined,
+      level,
+      messageKey: "message",
+      timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
+      formatters: {
+        level: (label) => ({ level: label }),
+      },
+    },
+    stream,
+  );
 }
 
 function maskLocalPaths(value: string): string {
@@ -65,25 +76,25 @@ function normalizeValue(value: unknown): unknown {
 }
 
 export function createLogger(minLevel = parseLogLevel(process.env.LOG_LEVEL)): Logger {
-  const minPriority = LEVELS[minLevel];
+  const stdoutLogger = createPinoLogger(minLevel, process.stdout);
+  const stderrLogger = createPinoLogger(minLevel, process.stderr);
 
   function write(level: LogLevel, message: string, context: LogContext = {}): void {
-    if (LEVELS[level] < minPriority) return;
     const normalizedContext = normalizeValue(context) as LogContext;
 
-    const entry = {
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      ...normalizedContext,
-    };
-
-    const line = JSON.stringify(entry);
-    if (level === "error") {
-      process.stderr.write(`${line}\n`);
-    } else {
-      process.stdout.write(`${line}\n`);
+    if (level === "debug") {
+      stdoutLogger.debug(normalizedContext, message);
+      return;
     }
+    if (level === "info") {
+      stdoutLogger.info(normalizedContext, message);
+      return;
+    }
+    if (level === "warn") {
+      stdoutLogger.warn(normalizedContext, message);
+      return;
+    }
+    stderrLogger.error(normalizedContext, message);
   }
 
   return {
