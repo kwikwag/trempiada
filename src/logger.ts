@@ -41,10 +41,7 @@ function createPinoLogger(level: LogLevel, stream: NodeJS.WritableStream): PinoL
 }
 
 function maskLocalPaths(value: string): string {
-  let masked = value;
-  if (process.cwd()) {
-    masked = masked.replaceAll(process.cwd(), "[APP_ROOT]");
-  }
+  let masked = value.replaceAll(process.cwd(), "[APP_ROOT]");
   if (process.env.HOME) {
     masked = masked.replaceAll(process.env.HOME, "[HOME]");
   }
@@ -76,25 +73,13 @@ function normalizeValue(value: unknown): unknown {
 }
 
 export function createLogger(minLevel = parseLogLevel(process.env.LOG_LEVEL)): Logger {
-  const stdoutLogger = createPinoLogger(minLevel, process.stdout);
-  const stderrLogger = createPinoLogger(minLevel, process.stderr);
+  const outLogger = createPinoLogger(minLevel, process.stdout);
+  const errLogger = createPinoLogger(minLevel, process.stderr);
 
   function write(level: LogLevel, message: string, context: LogContext = {}): void {
-    const normalizedContext = normalizeValue(context) as LogContext;
-
-    if (level === "debug") {
-      stdoutLogger.debug(normalizedContext, message);
-      return;
-    }
-    if (level === "info") {
-      stdoutLogger.info(normalizedContext, message);
-      return;
-    }
-    if (level === "warn") {
-      stdoutLogger.warn(normalizedContext, message);
-      return;
-    }
-    stderrLogger.error(normalizedContext, message);
+    const ctx = normalizeValue(context) as LogContext;
+    const pinoLogger = level === "warn" || level === "error" ? errLogger : outLogger;
+    pinoLogger[level](ctx, message);
   }
 
   return {

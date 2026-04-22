@@ -23,6 +23,10 @@ export function mainMenuKeyboard() {
   ]);
 }
 
+export function statusKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]);
+}
+
 export async function showMainMenu(ctx: Context, name: string): Promise<void> {
   await ctx.reply(`What would you like to do, ${name}?`, mainMenuKeyboard());
 }
@@ -94,6 +98,7 @@ export async function handleSos(
 
 export function rideReviewContent(telegramId: number, sessions: SessionManager) {
   const session = sessions.get(telegramId);
+  const isEditingPostedRide = typeof session.data.editingRideId === "number";
   const summary = formatRideSummary(
     session.data.originLabel,
     session.data.destLabel,
@@ -106,9 +111,19 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
   return {
     text: `Here's your ride:\n\n${summary}\n\n`,
     keyboard: Markup.inlineKeyboard([
-      [Markup.button.callback("Post this ride ✅", "post_ride")],
+      [
+        Markup.button.callback(
+          isEditingPostedRide ? "Save changes ✅" : "Post this ride ✅",
+          "post_ride",
+        ),
+      ],
       [Markup.button.callback("Edit something ✏️", "edit_ride")],
-      [Markup.button.callback("Cancel", "cancel_ride_flow")],
+      [
+        Markup.button.callback(
+          isEditingPostedRide ? "Keep current offer" : "Cancel",
+          "cancel_ride_flow",
+        ),
+      ],
     ]),
   };
 }
@@ -156,6 +171,7 @@ export async function showStatus(ctx: Context, userId: number, repo: Repository)
       [accountLine(user), "", formatOpenRideStatus(openRide)].join("\n"),
       Markup.inlineKeyboard([
         [Markup.button.callback("Review riders", "review_riders")],
+        [Markup.button.callback("Modify offer", "edit_open_ride")],
         [Markup.button.callback("Cancel offer", "cancel_open_ride")],
         [Markup.button.callback("Request a ride instead", "switch_offer_to_request")],
       ]),
@@ -168,6 +184,7 @@ export async function showStatus(ctx: Context, userId: number, repo: Repository)
     await ctx.reply(
       [accountLine(user), "", formatOpenRequestStatus(openRequest)].join("\n"),
       Markup.inlineKeyboard([
+        [Markup.button.callback("Modify request", "edit_open_request")],
         [Markup.button.callback("Cancel request", "cancel_open_request")],
         [Markup.button.callback("Offer a ride instead", "switch_request_to_drive")],
       ]),
@@ -226,7 +243,7 @@ function formatOpenRideStatus(ride: Ride): string {
     `📍 ${ride.originLabel} → ${ride.destLabel}`,
     `🕐 Leaving ${formatStatusTime(ride.departureTime)}`,
     `👥 ${ride.availableSeats} seat${ride.availableSeats === 1 ? "" : "s"} available`,
-    "Next: review matching riders, or cancel this offer before requesting a ride.",
+    "Next: review matching riders, modify this offer, or cancel it before requesting a ride.",
   ].join("\n");
 }
 

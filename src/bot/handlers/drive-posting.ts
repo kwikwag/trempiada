@@ -4,9 +4,18 @@ import type { BotDeps } from "../deps";
 import type { MatchCandidate } from "../../services/matching";
 import { WazeService, extractWazeDriveUrl } from "../../services/waze";
 import { DEFAULTS } from "../../types";
-import type { Car } from "../../types";
+import type { Car, Ride } from "../../types";
 import { formatTrustProfile, formatDuration, parseTimeToday } from "../../utils";
-import { showMainMenu, rideReviewContent, replyWithRideReview, resolveLocation } from "../ui";
+import {
+  showMainMenu,
+  rideReviewContent,
+  replyWithRideReview,
+  resolveLocation,
+  statusKeyboard,
+} from "../ui";
+
+const MATCHED_RIDE_EDIT_BLOCK_MESSAGE =
+  "You're already matched for a ride. If you want to change anything, cancel the ride first.";
 
 export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void {
   const { repo, sessions, logger } = deps;
@@ -70,6 +79,12 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     await startDrivePostingFlow(ctx, telegramId, deps);
   });
 
+  bot.action("edit_open_ride", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    await startOpenRideEditFlow(ctx, telegramId, deps);
+  });
+
   // Driver taps "Review riders" from a notification
   bot.action("review_riders", async (ctx) => {
     await ctx.answerCbQuery();
@@ -81,7 +96,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     if (activeMatch) {
       await ctx.reply(
         "You're already matched for a ride. Finish or cancel it before reviewing more riders.",
-        Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+        statusKeyboard(),
       );
       return;
     }
@@ -116,6 +131,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     bot.action(action, async (ctx) => {
       await ctx.answerCbQuery();
       const telegramId = ctx.from!.id;
+      if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
 
       const departure = new Date(Date.now() + minutes * 60 * 1000);
       sessions.updateData(telegramId, { departureTime: departure.toISOString() });
@@ -134,6 +150,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("depart_custom", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
     sessions.setScene(telegramId, "ride_departure_custom");
     logger.info("ride_departure_custom_requested", { telegramId });
     await ctx.editMessageText("When are you leaving?\n\nEnter a time like *18:00* or *6:30 PM*.", {
@@ -157,20 +174,16 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   // --- Edit ride review ---
   bot.action("edit_ride", async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText(
-      "What do you want to edit?",
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Seats available", "edit_ride_seats")],
-        [Markup.button.callback("Departure time", "edit_ride_departure")],
-        [Markup.button.callback("Route", "edit_ride_route")],
-        [Markup.button.callback("Back to review", "edit_ride_back")],
-      ]),
-    );
+    const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+
+    await showRideEditOptions(ctx, telegramId, deps);
   });
 
   bot.action("edit_ride_seats", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
     const session = sessions.get(telegramId);
     const maxSeats = session.data.carSeatCount ?? session.data.seats;
 
@@ -183,23 +196,20 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
 
   bot.action("edit_ride_departure", async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.editMessageText(
-      "When are you leaving?",
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Now", "depart_now")],
-        [Markup.button.callback("In 30 min", "depart_30")],
-        [Markup.button.callback("In 1 hour", "depart_60")],
-        [Markup.button.callback("Pick a time", "depart_custom")],
-      ]),
-    );
+    const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
+
+    await ctx.editMessageText("When are you leaving?", rideDepartureKeyboard());
   });
 
   bot.action("edit_ride_route", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
     const session = sessions.get(telegramId);
 
     sessions.setScene(telegramId, "ride_origin", {
+      editingRideId: session.data.editingRideId,
       carId: session.data.carId,
       seats: session.data.seats,
       carSeatCount: session.data.carSeatCount,
@@ -217,6 +227,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("edit_ride_back", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return;
     sessions.setScene(telegramId, "ride_review");
     const review = rideReviewContent(telegramId, sessions);
     await ctx.editMessageText(review.text, review.keyboard);
@@ -226,15 +237,127 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   bot.action("cancel_ride_flow", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
+    const sessionBeforeReset = sessions.get(telegramId);
+    const wasEditingPostedRide = typeof sessionBeforeReset.data.editingRideId === "number";
     sessions.reset(telegramId);
     logger.info("ride_posting_cancelled", { telegramId });
-    await ctx.editMessageText("Ride posting cancelled.");
+    await ctx.editMessageText(
+      wasEditingPostedRide
+        ? "No changes saved. Your current ride offer is still active."
+        : "Ride posting cancelled.",
+    );
     const session = sessions.get(telegramId);
     if (session.userId) {
       const user = repo.getUserById(session.userId);
       if (user) await showMainMenu(ctx, user.firstName);
     }
   });
+}
+
+function rideDepartureKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("Now", "depart_now")],
+    [Markup.button.callback("In 30 min", "depart_30")],
+    [Markup.button.callback("In 1 hour", "depart_60")],
+    [Markup.button.callback("Pick a time", "depart_custom")],
+  ]);
+}
+
+async function startOpenRideEditFlow(
+  ctx: Context,
+  telegramId: number,
+  deps: BotDeps,
+): Promise<void> {
+  const { repo, sessions, logger } = deps;
+  const session = sessions.get(telegramId);
+  if (!session.userId) return;
+
+  const activeMatch = repo.getActiveMatchForUser(session.userId);
+  if (activeMatch) {
+    sessions.setScene(telegramId, "idle");
+    logger.info("open_ride_edit_blocked_active_match", {
+      telegramId,
+      userId: session.userId,
+      matchId: activeMatch.id,
+    });
+    await ctx.reply(MATCHED_RIDE_EDIT_BLOCK_MESSAGE, statusKeyboard());
+    return;
+  }
+
+  const openRide = repo.getOpenRideForDriver(session.userId);
+  if (!openRide) {
+    sessions.setScene(telegramId, "idle");
+    logger.info("open_ride_edit_without_open_ride", {
+      telegramId,
+      userId: session.userId,
+    });
+    await ctx.reply("No open ride offer to modify.", statusKeyboard());
+    return;
+  }
+
+  setRideReviewFromRide(telegramId, openRide, deps);
+  logger.info("open_ride_edit_started", {
+    telegramId,
+    userId: session.userId,
+    rideId: openRide.id,
+  });
+  const review = rideReviewContent(telegramId, deps.sessions);
+  await ctx.editMessageText(review.text, review.keyboard);
+}
+
+async function showRideEditOptions(ctx: Context, telegramId: number, deps: BotDeps): Promise<void> {
+  const review = rideReviewContent(telegramId, deps.sessions);
+  await ctx.editMessageText(
+    `${review.text}What do you want to modify?`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("Seats available", "edit_ride_seats")],
+      [Markup.button.callback("Departure time", "edit_ride_departure")],
+      [Markup.button.callback("Route", "edit_ride_route")],
+      [Markup.button.callback("Back to review", "edit_ride_back")],
+    ]),
+  );
+}
+
+async function ensurePostedRideStillEditable(
+  ctx: Context,
+  telegramId: number,
+  deps: BotDeps,
+): Promise<boolean> {
+  const { repo, sessions, logger } = deps;
+  const session = sessions.get(telegramId);
+  if (!session.userId || typeof session.data.editingRideId !== "number") return true;
+  const editingRideId = session.data.editingRideId;
+
+  const activeMatch = repo.getActiveMatchForUser(session.userId);
+  if (activeMatch) {
+    logger.info("open_ride_edit_blocked_active_match", {
+      telegramId,
+      userId: session.userId,
+      matchId: activeMatch.id,
+      editingRideId,
+    });
+    sessions.reset(telegramId);
+    await ctx.reply(MATCHED_RIDE_EDIT_BLOCK_MESSAGE, statusKeyboard());
+    return false;
+  }
+
+  const openRide = repo.getOpenRideForDriver(session.userId);
+  if (!openRide || openRide.id !== editingRideId) {
+    logger.info("open_ride_edit_blocked_missing_open_ride", {
+      telegramId,
+      userId: session.userId,
+      editingRideId,
+      openRideId: openRide?.id,
+    });
+    sessions.reset(telegramId);
+    await ctx.reply(
+      "That ride offer is no longer open. Use /status to manage your current ride.",
+      statusKeyboard(),
+    );
+    return false;
+  }
+
+  return true;
 }
 
 export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Promise<boolean> {
@@ -255,6 +378,8 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
 
   // --- Ride posting: origin ---
   if (session.scene === "ride_origin") {
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+
     const loc = await resolveLocation(msg, geocoding);
     if (!loc) {
       if (!("location" in msg) && !("text" in msg)) {
@@ -285,6 +410,8 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
 
   // --- Ride posting: destination ---
   if (session.scene === "ride_destination") {
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+
     if (!("location" in msg) && !("text" in msg)) return true;
 
     const loc = await resolveLocation(msg, geocoding);
@@ -321,18 +448,15 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
       `${session.data.originLabel} → ${loc.label}\n` +
         (routeResult ? `🕐 About ${formatDuration(routeResult.durationSeconds)}\n\n` : `\n`) +
         `When are you leaving?`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Now", "depart_now")],
-        [Markup.button.callback("In 30 min", "depart_30")],
-        [Markup.button.callback("In 1 hour", "depart_60")],
-        [Markup.button.callback("Pick a time", "depart_custom")],
-      ]),
+      rideDepartureKeyboard(),
     );
     return true;
   }
 
   // --- Custom departure time entry ---
   if (session.scene === "ride_departure_custom" && "text" in msg) {
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+
     const departure = parseTimeToday(msg.text.trim());
     if (!departure) {
       await ctx.reply("I couldn't read that time. Try something like *18:00* or *6:30 PM*.", {
@@ -353,6 +477,8 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
 
   // --- Ride review: seat count editing ---
   if (session.scene === "ride_edit" && "text" in msg) {
+    if (!(await ensurePostedRideStillEditable(ctx, telegramId, deps))) return true;
+
     if (session.data.editField !== "seats") return false;
 
     const seats = Number.parseInt(msg.text.trim(), 10);
@@ -389,6 +515,29 @@ function setRideReviewFromCar(
     carSeatCount: car.seatCount,
     maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
     ...data,
+  });
+}
+
+function setRideReviewFromRide(telegramId: number, ride: Ride, deps: BotDeps): void {
+  const { repo, sessions } = deps;
+  const activeCar = repo.getActiveCar(ride.driverId);
+  const carSeatCount = activeCar?.id === ride.carId ? activeCar.seatCount : ride.availableSeats;
+
+  sessions.setScene(telegramId, "ride_review", {
+    editingRideId: ride.id,
+    carId: ride.carId,
+    seats: ride.availableSeats,
+    carSeatCount,
+    maxDetour: ride.maxDetourMinutes,
+    originLat: ride.originLat,
+    originLng: ride.originLng,
+    originLabel: ride.originLabel,
+    destLat: ride.destLat,
+    destLng: ride.destLng,
+    destLabel: ride.destLabel,
+    routeGeometry: ride.routeGeometry,
+    estimatedDuration: ride.estimatedDuration,
+    departureTime: ride.departureTime,
   });
 }
 
@@ -465,7 +614,7 @@ export async function ensureDriverReady(
     });
     await ctx.reply(
       "You're already matched for a ride. Finish or cancel that ride before offering another one.",
-      Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+      statusKeyboard(),
     );
     return null;
   }
@@ -497,9 +646,10 @@ export async function ensureDriverReady(
       rideId: openRide.id,
     });
     await ctx.reply(
-      "You already have an open ride offer. You can review riders for it, or replace it with a new offer.",
+      "You already have an open ride offer. You can review riders, modify it, or replace it with a new offer.",
       Markup.inlineKeyboard([
         [Markup.button.callback("Review riders", "review_riders")],
+        [Markup.button.callback("Modify offer", "edit_open_ride")],
         [Markup.button.callback("Replace offer", "replace_offer_with_drive")],
         [Markup.button.callback("Keep current offer", "menu_status")],
       ]),
@@ -658,30 +808,71 @@ async function postRideFromSession(ctx: Context, telegramId: number, deps: BotDe
   const { repo, sessions, matching, logger } = deps;
   const session = sessions.get(telegramId);
   if (!session.userId) return;
+  const editingRideId =
+    typeof session.data.editingRideId === "number" ? session.data.editingRideId : null;
 
   const activeMatch = repo.getActiveMatchForUser(session.userId);
   const openRequest = repo.getOpenRideRequestForRider(session.userId);
   const openRide = repo.getOpenRideForDriver(session.userId);
-  if (activeMatch || openRequest || openRide) {
+  if (activeMatch) {
+    logger.info("ride_edit_save_blocked_active_match", {
+      telegramId,
+      userId: session.userId,
+      matchId: activeMatch.id,
+      editingRideId,
+    });
+    await ctx.reply(MATCHED_RIDE_EDIT_BLOCK_MESSAGE, statusKeyboard());
+    sessions.reset(telegramId);
+    return;
+  }
+
+  if (editingRideId !== null && (!openRide || openRide.id !== editingRideId)) {
+    logger.info("ride_edit_save_blocked_missing_open_ride", {
+      telegramId,
+      userId: session.userId,
+      editingRideId,
+      openRideId: openRide?.id,
+    });
+    await ctx.reply(
+      "That ride offer is no longer open. Use /status to manage your current ride.",
+      statusKeyboard(),
+    );
+    sessions.reset(telegramId);
+    return;
+  }
+
+  if (openRequest || (openRide && editingRideId === null)) {
     logger.info("ride_post_blocked_conflicting_activity", {
       telegramId,
       userId: session.userId,
-      matchId: activeMatch?.id,
       requestId: openRequest?.id,
       rideId: openRide?.id,
+      editingRideId,
     });
     await ctx.reply(
       "You already have an active ride, offer, or request. Use /status to manage it before posting another ride.",
-      Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+      statusKeyboard(),
     );
     sessions.reset(telegramId);
     return;
   }
 
   const review = rideReviewContent(telegramId, sessions);
-  await ctx.editMessageText(`${review.text}Ride posted! ✅ Searching for riders...`);
+  await ctx.editMessageText(
+    `${review.text}${editingRideId === null ? "Ride posted" : "Ride updated"}! ✅ Searching for riders...`,
+  );
 
   const d = session.data;
+  if (editingRideId !== null) {
+    const cancelledRide = repo.cancelOpenRideForDriver(session.userId);
+    logger.info("open_ride_replaced_by_edit", {
+      telegramId,
+      userId: session.userId,
+      rideId: cancelledRide?.id,
+      editingRideId,
+    });
+  }
+
   const ride = repo.createRide({
     driverId: session.userId,
     carId: d.carId,
@@ -701,6 +892,7 @@ async function postRideFromSession(ctx: Context, telegramId: number, deps: BotDe
     telegramId,
     userId: session.userId,
     rideId: ride.id,
+    replacedRideId: editingRideId,
     carId: ride.carId,
     seats: ride.availableSeats,
     maxDetourMinutes: ride.maxDetourMinutes,

@@ -81,6 +81,7 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 - All dates stored as ISO 8601 strings in SQLite
 - Telegram file IDs stored for photos (not downloaded/stored locally)
 - Points are REAL in SQLite (fractional values like 0.5)
+- Keep code DRY and simple.
 
 ## UX Model
 
@@ -90,6 +91,7 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 - A **persistent SOS reply keyboard** is shown to both parties from match acceptance until ride end or cancellation — it is the only reply keyboard used and must be explicitly removed with `Markup.removeKeyboard()` on ride conclusion
 - `showMainMenu(ctx, name)` is the canonical way to return a user to idle state — prefer it over ad-hoc text prompts
 - A user can have only one active ride activity at a time: matched ride, open driver offer, or open rider request. Starting the opposite role should guide them to cancel/switch first, not create a second active activity.
+- Open driver offers and rider requests can be modified only while still unmatched. Edit flows keep the current open activity active while the user chooses a field and reviews changes; saving replaces the previous open offer/request. Once matched, users must cancel the ride before changing route, time, seats, or request details.
 - `showStatus(ctx, userId, repo)` is the canonical state summary and should include the user's role, route, current state, and the obvious next action buttons.
 
 ## Tests
@@ -104,7 +106,7 @@ Run with `npm test` (unit) or `npm run test:all`. Uses Node's built-in test runn
 
 - Repository tests use a real in-memory SQLite instance (call `initDatabase(db)` then `new Repository(db)`)
 - Handler tests require a mock Telegraf context — skip unless explicitly requested
-- When you add a feature that touches `repository.ts`, `utils/index.ts`, or `session.ts`, check whether a test for that method is missing and add it
+- When you add a feature, check whether a test for that method is missing and add it
 
 # Agent Notes
 
