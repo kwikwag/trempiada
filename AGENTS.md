@@ -84,6 +84,13 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 - Prefer named object arguments for functions where positional order is unclear; use them by default for functions with 4+ arguments.
 - Keep code DRY and simple.
 
+## Git Commit Messages
+
+- Match the existing commit-message style: imperative, sentence-case subject line, usually starting with verbs.
+- When a commit is non-trivial, include a short body explaining the behavioral change and use bullets for multi-part changes.
+- Include relevant verification/test additions in the body when they are part of the change.
+- If an agent authored or materially contributed to the commit, include a `Co-authored-by:` line in the final footer.
+
 ## UX Model
 
 - Primary interaction is **inline keyboard buttons**, not slash commands
