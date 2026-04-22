@@ -1,7 +1,10 @@
 import { Telegraf, Markup } from "telegraf";
+import { message } from "telegraf/filters";
 import type { Context } from "telegraf";
 import type { SessionManager } from "./session";
 import type { DevRepository } from "../db/dev-repository";
+import type { RoutingService } from "../services/routing";
+import type { GeocodingService } from "../services/geocoding";
 
 // Synthetic Telegram IDs for alt personas. Above the real Telegram ID range.
 const ALT_BASE_ID = 9_000_000_000;
@@ -60,6 +63,8 @@ export function registerDevHandlers(
   sessions: SessionManager,
   devRepo: DevRepository,
   altCount: number,
+  routing: RoutingService,
+  geocoding: GeocodingService,
   whitelist?: Set<number>,
 ): void {
   function getRealId(ctx: Context): number {
@@ -74,6 +79,9 @@ export function registerDevHandlers(
     if (effectiveId === realId) return "Self";
     return dev.labelFor(effectiveId).trim() || String(effectiveId);
   }
+
+  // realId → "nominatim" | "osrm"
+  const pendingQuery = new Map<number, "nominatim" | "osrm">();
 
   async function showDevMenu(ctx: Context, realId: number): Promise<void> {
     const activeIndex = dev.getActiveAltIndex(realId);
@@ -95,6 +103,10 @@ export function registerDevHandlers(
         [selfButton, ...altButtons],
         [Markup.button.callback("🗑 Reset alt sessions", "dev_reset")],
         [Markup.button.callback("Delete current identity data", "dev_delete_current")],
+        [
+          Markup.button.callback("🌍 Query Nominatim", "dev_query_nominatim"),
+          Markup.button.callback("🗺 Query OSRM", "dev_query_osrm"),
+        ],
       ]),
     });
   }
@@ -186,5 +198,53 @@ export function registerDevHandlers(
   bot.action("dev_delete_cancel", async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText("Delete cancelled.");
+  });
+
+  bot.action("dev_query_nominatim", async (ctx) => {
+    await ctx.answerCbQuery();
+    const realId = getRealId(ctx);
+    if (!devIds.has(realId)) return;
+    pendingQuery.set(realId, "nominatim");
+    await ctx.reply("Enter address to geocode:");
+  });
+
+  bot.action("dev_query_osrm", async (ctx) => {
+    await ctx.answerCbQuery();
+    const realId = getRealId(ctx);
+    if (!devIds.has(realId)) return;
+    pendingQuery.set(realId, "osrm");
+    await ctx.reply("Enter coordinates as `lat,lng` to find nearest routable point:");
+  });
+
+  bot.on(message("text"), async (ctx, next) => {
+    const realId = getRealId(ctx);
+    if (!devIds.has(realId)) return next();
+    const kind = pendingQuery.get(realId);
+    if (!kind) return next();
+    pendingQuery.delete(realId);
+
+    const text = (ctx.message as any).text as string;
+
+    if (kind === "nominatim") {
+      const result = await geocoding.geocode(text);
+      if (!result) {
+        await ctx.reply("No results found.");
+      } else {
+        await ctx.reply(`📍 ${result.label}\nlat: ${result.lat}, lng: ${result.lng}`);
+      }
+    } else {
+      const parts = text.split(",").map((s) => parseFloat(s.trim()));
+      if (parts.length !== 2 || parts.some(isNaN)) {
+        await ctx.reply("Invalid format. Use: lat,lng");
+        return;
+      }
+      const [lat, lng] = parts;
+      const result = await routing.findNearest({ lat, lng });
+      if (!result) {
+        await ctx.reply("No nearest point found.");
+      } else {
+        await ctx.reply(`📌 Nearest routable point:\nlat: ${result.lat}, lng: ${result.lng}`);
+      }
+    }
   });
 }

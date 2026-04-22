@@ -118,6 +118,8 @@ export function registerHandlers(
       sessions,
       options.devRepo,
       altCount,
+      routing,
+      geocoding,
       whitelist,
     );
   }
