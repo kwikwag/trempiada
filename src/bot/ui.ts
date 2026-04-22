@@ -2,7 +2,12 @@ import { Markup } from "telegraf";
 import type { Context } from "telegraf";
 import type { Repository } from "../db/repository";
 import type { SessionManager } from "./session";
-import { formatTrustProfile, formatRideSummary, type RideChangedField } from "../utils";
+import {
+  formatTrustProfile,
+  formatRideSummary,
+  formatCarInfo,
+  type RideChangedField,
+} from "../utils";
 import type { Logger } from "../logger";
 import { noopLogger } from "../logger";
 import type { Match, Ride, RideRequest, User } from "../types";
@@ -122,6 +127,7 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
   if (isEditingPostedRide) {
     changedFields = new Set();
     if (session.data.seats !== session.data.originalSeats) changedFields.add("seats");
+    if (session.data.carId !== session.data.originalCarId) changedFields.add("car");
     if (session.data.departureTime !== session.data.originalDepartureTime)
       changedFields.add("departure");
     if (
@@ -137,6 +143,7 @@ export function rideReviewContent(telegramId: number, sessions: SessionManager) 
     destLabel: session.data.destLabel,
     durationSeconds: session.data.estimatedDuration,
     departureTime: session.data.departureTime,
+    carInfo: session.data.carInfo,
     seats: session.data.seats,
     maxDetour: session.data.maxDetour,
     changedFields,
@@ -212,8 +219,10 @@ export async function showStatus(
 
   const openRide = repo.getOpenRideForDriver(userId);
   if (openRide) {
+    const activeCar = repo.getActiveCar(userId);
+    const carInfo = activeCar?.id === openRide.carId ? formatCarInfo(activeCar) : undefined;
     await ctx.reply(
-      [accountLine(user), "", formatOpenRideStatus(openRide)].join("\n"),
+      [accountLine(user), "", formatOpenRideStatus(openRide, carInfo)].join("\n"),
       Markup.inlineKeyboard([
         [Markup.button.callback("Review riders", "review_riders")],
         [Markup.button.callback("Modify offer", "edit_open_ride")],
@@ -288,11 +297,12 @@ function formatMatchStatus({
   ].join("\n");
 }
 
-function formatOpenRideStatus(ride: Ride): string {
+function formatOpenRideStatus(ride: Ride, carInfo?: string): string {
   return [
     "🚗 You are offering a ride.",
     `📍 ${ride.originLabel} → ${ride.destLabel}`,
     `🕐 Leaving ${formatStatusTime(ride.departureTime)}`,
+    ...(carInfo ? [carInfo] : []),
     `👥 ${ride.availableSeats} seat${ride.availableSeats === 1 ? "" : "s"} available`,
     "Next: review matching riders, modify this offer, or cancel it before requesting a ride.",
   ].join("\n");

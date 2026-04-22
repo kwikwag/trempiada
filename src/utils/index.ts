@@ -70,13 +70,13 @@ export function formatTrustProfile({
 }
 
 /** Format car info for display */
-export function formatCarInfo(car: Car, masked: boolean = false): string {
-  const plate = masked ? maskPlate(car.plateNumber) : car.plateNumber;
+export function formatCarInfo(car: Car, { masked = false }: { masked?: boolean } = {}): string {
   const yearStr = car.year ? `, ${car.year}` : "";
-  return `🚗 ${car.make} ${car.model}, ${car.color}${yearStr}\n🔢 Plate: ${plate}`;
+  const plate = masked ? maskPlate(car.plateNumber) : car.plateNumber;
+  return `🚗 ${car.make} ${car.model}, ${car.color}${yearStr} 🔢 Plate: ${plate}`;
 }
 
-export type RideChangedField = "route" | "departure" | "seats";
+export type RideChangedField = "route" | "departure" | "car" | "seats";
 
 /** Format a ride summary for review before posting. Changed fields are bolded (Markdown). */
 export function formatRideSummary({
@@ -84,6 +84,7 @@ export function formatRideSummary({
   destLabel,
   durationSeconds,
   departureTime,
+  carInfo,
   seats,
   maxDetour,
   changedFields,
@@ -95,6 +96,7 @@ export function formatRideSummary({
   return [
     b(`📍 ${originLabel} → ${destLabel}`, "route"),
     b(`🕐 ${duration} drive, departing ${depTime}`, "departure"),
+    ...(carInfo ? [b(carInfo, "car")] : []),
     b(`👥 ${seats} seat${seats > 1 ? "s" : ""} available`, "seats"),
     `↩️ Max detour: ${maxDetour} min`,
   ].join("\n");
@@ -131,7 +133,7 @@ export function formatMatchForRider({
     verifications: publicVerifications,
     forPublic: true,
   });
-  const carInfo = formatCarInfo(car, true); // Masked plate pre-confirmation
+  const carInfo = formatCarInfo(car, { masked: true }); // Masked plate pre-confirmation
 
   return [
     "🎉 Ride match!\n",
@@ -166,6 +168,7 @@ export interface FormatRideSummaryArgs {
   destLabel: string;
   durationSeconds: number | null;
   departureTime: string;
+  carInfo?: string;
   seats: number;
   maxDetour: number;
   changedFields?: Set<RideChangedField>;

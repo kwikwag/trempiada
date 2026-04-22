@@ -5,7 +5,7 @@ import type { MatchCandidate } from "../../services/matching";
 import { WazeService, extractWazeDriveUrl } from "../../services/waze";
 import { DEFAULTS } from "../../types";
 import type { Car, Ride } from "../../types";
-import { formatTrustProfile, formatDuration, parseTimeToday } from "../../utils";
+import { formatTrustProfile, formatDuration, parseTimeToday, formatCarInfo } from "../../utils";
 import { ensureProfileComplete } from "./profile";
 import {
   showMainMenu,
@@ -563,6 +563,7 @@ function setRideReviewFromCar({
     scene: "ride_review",
     data: {
       carId: car.id,
+      carInfo: formatCarInfo(car),
       seats: car.seatCount,
       carSeatCount: car.seatCount,
       maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
@@ -575,6 +576,7 @@ function setRideReviewFromRide({ telegramId, ride, deps }: SetRideReviewFromRide
   const { repo, sessions } = deps;
   const activeCar = repo.getActiveCar(ride.driverId);
   const carSeatCount = activeCar?.id === ride.carId ? activeCar.seatCount : ride.availableSeats;
+  const carInfo = activeCar?.id === ride.carId ? formatCarInfo(activeCar) : undefined;
 
   sessions.setScene({
     telegramId,
@@ -582,6 +584,7 @@ function setRideReviewFromRide({ telegramId, ride, deps }: SetRideReviewFromRide
     data: {
       editingRideId: ride.id,
       carId: ride.carId,
+      carInfo,
       seats: ride.availableSeats,
       carSeatCount,
       maxDetour: ride.maxDetourMinutes,
@@ -595,6 +598,7 @@ function setRideReviewFromRide({ telegramId, ride, deps }: SetRideReviewFromRide
       estimatedDuration: ride.estimatedDuration,
       departureTime: ride.departureTime,
       originalSeats: ride.availableSeats,
+      originalCarId: ride.carId,
       originalDepartureTime: ride.departureTime,
       originalOriginLabel: ride.originLabel,
       originalDestLabel: ride.destLabel,
@@ -770,6 +774,7 @@ export async function startDrivePostingFlow({
     scene: "ride_origin",
     data: {
       carId: car.id,
+      carInfo: formatCarInfo(car),
       seats: car.seatCount,
       carSeatCount: car.seatCount,
       maxDetour: DEFAULTS.MAX_DETOUR_MINUTES,
@@ -782,8 +787,7 @@ export async function startDrivePostingFlow({
     seats: car.seatCount,
   });
   await ctx.reply(
-    `Where are you headed?\n\n` +
-      `Send me your starting point — you can:\n` +
+    `Send me your starting point — you can:\n` +
       `📍 Drop a pin (tap the attachment icon)\n` +
       `✍️ Type an address or place name`,
   );

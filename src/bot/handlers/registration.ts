@@ -59,7 +59,7 @@ export function registerRegistrationHandlers({
     if (nextChoice === "car") {
       const text =
         "Remove your car from your profile?\n\n" +
-        (activeCar ? `${formatCarInfo(activeCar, true)}\n\n` : "") +
+        (activeCar ? `${formatCarInfo(activeCar, { masked: true })}\n\n` : "") +
         "If you remove it, you'll need to register a car again before offering rides.";
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback("Yes, remove it", "restart_remove_car_yes")],
@@ -249,6 +249,7 @@ export function registerRegistrationHandlers({
         data: {
           ...saved,
           carId: car.id,
+          carInfo: formatCarInfo(car),
           carSeatCount: car.seatCount,
           seats: Math.min(Number(saved.seats ?? car.seatCount), car.seatCount),
         },
