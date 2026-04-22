@@ -17,6 +17,14 @@ import {
   generateCode,
   parseTimeToday,
 } from "../utils";
+import { DevService, registerDevHandlers } from "./dev";
+
+export interface HandlerOptions {
+  whitelist?: Set<number>;
+  dev?: DevService;
+  devIds?: Set<number>;
+  altCount?: number;
+}
 
 export function registerHandlers(
   bot: Telegraf,
@@ -26,12 +34,52 @@ export function registerHandlers(
   routing: RoutingService,
   carRecognition: CarRecognitionService,
   geocoding: GeocodingService,
+  options: HandlerOptions = {},
 ) {
+  const { whitelist, dev, devIds, altCount = 2 } = options;
+
+  // ---- Whitelist middleware ----
+  // Silently drop updates from non-whitelisted users (no reply, to avoid revealing the bot).
+  if (whitelist && whitelist.size > 0) {
+    bot.use((ctx, next) => {
+      if (!whitelist.has(ctx.from?.id ?? 0)) return;
+      return next();
+    });
+  }
+
+  // ---- Dev: impersonation middleware ----
+  // Stashes the real Telegram ID, then replaces ctx.from.id with the active alt ID so that
+  // all downstream handlers (sessions, DB lookups) transparently see the alt identity.
+  if (dev) {
+    bot.use((ctx, next) => {
+      if (ctx.from) {
+        const realId = ctx.from.id;
+        (ctx as any).__realTelegramId = realId;
+        const effectiveId = dev.getEffectiveId(realId);
+        if (effectiveId !== realId) {
+          dev.registerChat(effectiveId, realId);
+          (ctx.from as any).id = effectiveId;
+        }
+      }
+      return next();
+    });
+
+    registerDevHandlers(bot, dev, devIds ?? new Set(), sessions, altCount);
+  }
   const waze = new WazeService();
 
   // Persistent reply keyboard shown during active matches. Removed when ride ends.
   const SOS_KEYBOARD = Markup.keyboard([["🚨 SOS"]]).resize();
   const REMOVE_KEYBOARD = Markup.removeKeyboard();
+
+  // ---- Notification helper ----
+  // Use this instead of bot.telegram.sendMessage whenever the target may be an alt user.
+  // In dev mode, routes the message to the real chat with a persona prefix.
+  async function notify(targetId: number, text: string, extra?: object): Promise<void> {
+    const chatId = dev ? dev.resolveChat(targetId) : targetId;
+    const prefix = dev ? dev.labelFor(targetId) : "";
+    await bot.telegram.sendMessage(chatId, prefix + text, extra as any);
+  }
 
   // ---- Shared UI helpers ----
 
@@ -288,7 +336,7 @@ export function registerHandlers(
       const rider = repo.getUserById(candidate.request.riderId);
       if (!rider) continue;
       try {
-        await ctx.telegram.sendMessage(
+        await notify(
           rider.telegramId,
           "🔔 A driver heading your way is reviewing your ride request! You'll get a confirmation if they accept.",
         );
@@ -718,7 +766,7 @@ export function registerHandlers(
 
       if (otherUser) {
         try {
-          await ctx.telegram.sendMessage(
+          await notify(
             otherUser.telegramId,
             `⚠️ Your ride has been cancelled by the other party.\n` +
               (reason === "no_show"
@@ -726,7 +774,7 @@ export function registerHandlers(
                 : ``),
             { reply_markup: { remove_keyboard: true } },
           );
-          await ctx.telegram.sendMessage(
+          await notify(
             otherUser.telegramId,
             `What would you like to do next?`,
             mainMenuKeyboard() as any,
@@ -781,10 +829,7 @@ export function registerHandlers(
 
         if (otherUser && thisUser && "text" in ctx.message) {
           try {
-            await ctx.telegram.sendMessage(
-              otherUser.telegramId,
-              `💬 ${thisUser.firstName}: ${ctx.message.text}`,
-            );
+            await notify(otherUser.telegramId, `💬 ${thisUser.firstName}: ${ctx.message.text}`);
           } catch {
             await ctx.reply(
               "Couldn't relay your message. The other party may have blocked the bot.",
@@ -989,7 +1034,7 @@ export function registerHandlers(
 
           if (rider) {
             try {
-              await ctx.telegram.sendMessage(
+              await notify(
                 rider.telegramId,
                 "Ride started! ✅ Enjoy the ride.\n\nYou can send messages to your driver here.",
               );
@@ -1424,7 +1469,7 @@ export function registerHandlers(
         const driver = repo.getUserById(c.ride.driverId);
         if (!driver) continue;
         try {
-          await ctx.telegram.sendMessage(
+          await notify(
             driver.telegramId,
             `🆕 New rider on your route!\n\n` +
               `📍 Pickup: ${request.pickupLabel}\n` +
@@ -1491,7 +1536,7 @@ export function registerHandlers(
 
     // Notify rider with their code and the SOS keyboard
     try {
-      await ctx.telegram.sendMessage(
+      await notify(
         rider.telegramId,
         `🎉 A driver accepted your ride!\n\n` +
           `📍 Pickup: ${candidate.request.pickupLabel}\n` +
@@ -1596,11 +1641,10 @@ export function registerHandlers(
       sessions.setScene(rider.telegramId, "rating");
       sessions.updateData(rider.telegramId, { matchId });
       try {
-        // Remove SOS keyboard for rider
-        await ctx.telegram.sendMessage(rider.telegramId, `You've arrived! 🎉`, {
+        await notify(rider.telegramId, `You've arrived! 🎉`, {
           reply_markup: { remove_keyboard: true },
         });
-        await ctx.telegram.sendMessage(
+        await notify(
           rider.telegramId,
           `How was your ride with ${driver?.firstName}?`,
           ratingKeyboard as any,
@@ -1651,12 +1695,12 @@ export function registerHandlers(
           const pts =
             driverRating.score >= 4 ? POINTS.DRIVER_REWARD_HIGH : POINTS.DRIVER_REWARD_LOW;
           try {
-            await ctx.telegram.sendMessage(
+            await notify(
               driver.telegramId,
               `Thanks! ${rider?.firstName} rated you ⭐${driverRating.score}.\n` +
                 `You earned ${pts} points. Balance: ${repo.getPointsBalance(driver.id).toFixed(1)} pts.`,
             );
-            await ctx.telegram.sendMessage(
+            await notify(
               driver.telegramId,
               `What would you like to do next?`,
               mainMenuKeyboard() as any,
@@ -1669,12 +1713,12 @@ export function registerHandlers(
         if (rider && riderRating) {
           const pts = riderRating.score >= 4 ? POINTS.RIDER_REWARD_HIGH : POINTS.RIDER_REWARD_LOW;
           try {
-            await ctx.telegram.sendMessage(
+            await notify(
               rider.telegramId,
               `Thanks! ${driver?.firstName} rated you ⭐${riderRating.score}.\n` +
                 `You earned ${pts} points. Balance: ${repo.getPointsBalance(rider.id).toFixed(1)} pts.`,
             );
-            await ctx.telegram.sendMessage(
+            await notify(
               rider.telegramId,
               `What would you like to do next?`,
               mainMenuKeyboard() as any,
