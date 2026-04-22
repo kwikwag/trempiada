@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
+    "dev:watch": "node --watch -r ts-node/register src/index.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "hooks:install": "git config core.hooksPath .githooks",

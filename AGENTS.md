@@ -16,6 +16,7 @@ Telegram-based ridesharing bot connecting drivers with hitchhikers in Israel.
 ```bash
 npm run build        # Compile TypeScript
 npm run dev          # Run with ts-node
+npm run dev:watch    # Run with ts-node and restart on file changes
 npm run migrate      # Initialize/migrate database
 npx tsc --noEmit     # Type-check without emitting
 ```
