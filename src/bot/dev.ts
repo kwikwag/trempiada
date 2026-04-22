@@ -60,6 +60,7 @@ export function registerDevHandlers(
   sessions: SessionManager,
   devRepo: DevRepository,
   altCount: number,
+  whitelist?: Set<number>,
 ): void {
   function getRealId(ctx: Context): number {
     return (ctx as any).__realTelegramId ?? ctx.from!.id;
@@ -95,6 +96,21 @@ export function registerDevHandlers(
         [Markup.button.callback("🗑 Reset alt sessions", "dev_reset")],
         [Markup.button.callback("Delete current identity data", "dev_delete_current")],
       ]),
+    });
+  }
+
+  if (whitelist) {
+    bot.command("whitelist", async (ctx) => {
+      const realId = getRealId(ctx);
+      if (!devIds.has(realId)) return;
+      const arg = ctx.message.text.split(/\s+/)[1];
+      const id = Number(arg);
+      if (!arg || !Number.isInteger(id) || id <= 0) {
+        await ctx.reply("Usage: /whitelist <telegram_id>");
+        return;
+      }
+      whitelist.add(id);
+      await ctx.reply(`✅ Added ${id} to whitelist (${whitelist.size} total). Restart to persist.`);
     });
   }
 

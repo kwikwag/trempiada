@@ -111,7 +111,15 @@ export function registerHandlers(
     if (!options.devRepo) {
       throw new Error("DevRepository is required when dev mode is enabled");
     }
-    registerDevHandlers(bot, dev, devIds ?? new Set(), sessions, options.devRepo, altCount);
+    registerDevHandlers(
+      bot,
+      dev,
+      devIds ?? new Set(),
+      sessions,
+      options.devRepo,
+      altCount,
+      whitelist,
+    );
   }
 
   // ---- Structured update logging ----
