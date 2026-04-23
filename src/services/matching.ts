@@ -47,7 +47,8 @@ export class MatchingService {
     const candidates: MatchCandidate[] = [];
     const rejected = {
       sameUser: 0,
-      timeWindow: 0,
+      pickupArrivalWindow: 0,
+      pickupAlreadyPassed: 0,
       roughDistance: 0,
       minDistance: 0,
       samePairCooldown: 0,
@@ -57,8 +58,6 @@ export class MatchingService {
 
     const driverOrigin: GeoPoint = { lat: ride.originLat, lng: ride.originLng };
     const driverDest: GeoPoint = { lat: ride.destLat, lng: ride.destLng };
-    const departureDate = new Date(ride.departureTime);
-
     for (const req of openRequests) {
       // Skip if same user
       if (req.riderId === ride.driverId) {
@@ -67,14 +66,6 @@ export class MatchingService {
       }
 
       // --- Quick filters ---
-
-      // Time window check
-      const earliest = new Date(req.earliestDeparture);
-      const latest = new Date(req.latestDeparture);
-      if (departureDate < earliest || departureDate > latest) {
-        rejected.timeWindow++;
-        continue;
-      }
 
       // Rough distance check: pickup should be vaguely near the route
       // Use a generous radius since the actual detour calc is what matters
@@ -95,6 +86,24 @@ export class MatchingService {
       // it's almost certainly not along the way
       if (pickupToOrigin > routeLength && pickupToDest > routeLength) {
         rejected.roughDistance++;
+        continue;
+      }
+
+      const pickupArrivalTime = estimatePickupArrivalTime({
+        ride,
+        routeLengthKm: routeLength,
+        pickupToOriginKm: pickupToOrigin,
+        now: new Date(),
+      });
+      const earliest = new Date(req.earliestDeparture);
+      const latest = new Date(req.latestDeparture);
+      if (pickupArrivalTime > latest || pickupArrivalTime < earliest) {
+        rejected.pickupArrivalWindow++;
+        continue;
+      }
+
+      if (hasPickupAlreadyPassed({ pickupArrivalTime, now: new Date() })) {
+        rejected.pickupAlreadyPassed++;
         continue;
       }
 
@@ -175,7 +184,8 @@ export class MatchingService {
     const rejected = {
       sameUser: 0,
       noSeats: 0,
-      timeWindow: 0,
+      pickupArrivalWindow: 0,
+      pickupAlreadyPassed: 0,
       roughDistance: 0,
       minDistance: 0,
       samePairCooldown: 0,
@@ -198,12 +208,6 @@ export class MatchingService {
         continue;
       }
 
-      const departureDate = new Date(ride.departureTime);
-      if (departureDate < earliest || departureDate > latest) {
-        rejected.timeWindow++;
-        continue;
-      }
-
       // Rough proximity check
       const routeLength = haversineKm({
         from: { lat: ride.originLat, lng: ride.originLng },
@@ -215,6 +219,21 @@ export class MatchingService {
       });
       if (pickupToOrigin > routeLength) {
         rejected.roughDistance++;
+        continue;
+      }
+
+      const pickupArrivalTime = estimatePickupArrivalTime({
+        ride,
+        routeLengthKm: routeLength,
+        pickupToOriginKm: pickupToOrigin,
+        now: new Date(),
+      });
+      if (pickupArrivalTime > latest || pickupArrivalTime < earliest) {
+        rejected.pickupArrivalWindow++;
+        continue;
+      }
+      if (hasPickupAlreadyPassed({ pickupArrivalTime, now: new Date() })) {
+        rejected.pickupAlreadyPassed++;
         continue;
       }
 
@@ -310,6 +329,39 @@ export class MatchingService {
 
     return match;
   }
+}
+
+function estimatePickupArrivalTime({
+  ride,
+  routeLengthKm,
+  pickupToOriginKm,
+  now,
+}: {
+  ride: Ride;
+  routeLengthKm: number;
+  pickupToOriginKm: number;
+  now: Date;
+}): Date {
+  const departureDate = new Date(ride.departureTime);
+  const routeDurationSeconds = ride.estimatedDuration ?? 0;
+  if (routeLengthKm <= 0 || routeDurationSeconds <= 0) {
+    return departureDate > now ? departureDate : now;
+  }
+
+  const progressRatio = Math.min(1, Math.max(0, pickupToOriginKm / routeLengthKm));
+  const secondsToPickup = routeDurationSeconds * progressRatio;
+  return new Date(departureDate.getTime() + secondsToPickup * 1000);
+}
+
+function hasPickupAlreadyPassed({
+  pickupArrivalTime,
+  now,
+}: {
+  pickupArrivalTime: Date;
+  now: Date;
+}): boolean {
+  const GRACE_MS = 5 * 60 * 1000;
+  return pickupArrivalTime.getTime() + GRACE_MS < now.getTime();
 }
 
 export interface MatchingServiceOptions {

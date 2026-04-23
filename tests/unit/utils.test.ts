@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatCarInfo, formatRideSummary, haversineKm } from "../../src/utils";
+import {
+  formatCarInfo,
+  formatRideSummary,
+  haversineKm,
+  parseTimeToday,
+  formatDuration,
+  generateCode,
+} from "../../src/utils";
 import type { Car } from "../../src/types";
 
 test("haversineKm returns zero for the same point", () => {
@@ -50,4 +57,34 @@ test("formatRideSummary lists car details separately from seats", () => {
 
   assert.match(summary, /🚗 Toyota Corolla, white 🔢 Plate: 12-345-67/);
   assert.match(summary, /👥 3 seats available/);
+});
+
+test("parseTimeToday parses valid 24h time", () => {
+  const parsed = parseTimeToday("18:45");
+  assert.ok(parsed);
+  assert.equal(parsed.getHours(), 18);
+  assert.equal(parsed.getMinutes(), 45);
+});
+
+test("parseTimeToday handles midnight edge with 12:00 AM", () => {
+  const parsed = parseTimeToday("12:00 AM");
+  assert.ok(parsed);
+  assert.equal(parsed.getHours(), 0);
+  assert.equal(parsed.getMinutes(), 0);
+});
+
+test("parseTimeToday returns null for invalid time", () => {
+  assert.equal(parseTimeToday("25:99"), null);
+});
+
+test("formatDuration formats minutes and hours", () => {
+  assert.equal(formatDuration(5 * 60), "5 min");
+  assert.equal(formatDuration(60 * 60), "1h");
+  assert.equal(formatDuration(90 * 60), "1h 30min");
+});
+
+test("generateCode returns numeric code with requested length", () => {
+  const code = generateCode(6);
+  assert.equal(code.length, 6);
+  assert.match(code, /^\d{6}$/);
 });
