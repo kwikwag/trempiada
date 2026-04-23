@@ -17,6 +17,26 @@ interface RecentUser {
   seenAt: Date;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+export function formatRecentUsersMessage(users: RecentUser[]): string {
+  const lines = users.map((u, i) => {
+    const name = [u.firstName, u.lastName].filter(Boolean).join(" ");
+    const parts = [`${i + 1}. <code>${u.id}</code>`];
+    if (name) parts.push(escapeHtml(name));
+    if (u.username) parts.push(`@${escapeHtml(u.username)}`);
+    parts.push(escapeHtml(u.seenAt.toISOString().replace("T", " ").slice(0, 19)));
+    return parts.join(" | ");
+  });
+  return `<b>Last ${users.length} users:</b>\n${lines.join("\n")}`;
+}
+
 export class DevService {
   private activeAlt = new Map<number, number>(); // realId → altId
   private altChats = new Map<number, number>(); // altId → realChatId
@@ -193,16 +213,8 @@ export function registerDevHandlers({
       await ctx.reply("No recent users recorded.");
       return;
     }
-    const lines = users.map((u, i) => {
-      const name = [u.firstName, u.lastName].filter(Boolean).join(" ");
-      const parts = [`${i + 1}. \`${u.id}\``];
-      if (name) parts.push(name);
-      if (u.username) parts.push(`@${u.username}`);
-      parts.push(u.seenAt.toISOString().replace("T", " ").slice(0, 19));
-      return parts.join(" | ");
-    });
-    await ctx.reply(`*Last ${users.length} users:*\n${lines.join("\n")}`, {
-      parse_mode: "Markdown",
+    await ctx.reply(formatRecentUsersMessage(users), {
+      parse_mode: "HTML",
     });
   });
 
