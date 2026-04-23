@@ -31,7 +31,7 @@ export async function ensureProfileComplete({
       pendingAction,
     });
     await ctx.reply(
-      "One quick thing before we continue — what's your gender? This helps match you with compatible rides.",
+      "What's your gender? Some riders might feel more safe if you share this info.",
       Markup.inlineKeyboard([
         [Markup.button.callback("Male", "gender_male")],
         [Markup.button.callback("Female", "gender_female")],
@@ -68,7 +68,7 @@ export async function ensureProfileComplete({
       userId: session.userId,
       pendingAction,
     });
-    await ctx.reply("Please send a photo of yourself so the other party can recognize you. 📸");
+    await ctx.reply("Please send a photo of your face so the other party can recognize you. 📸");
     return false;
   }
 

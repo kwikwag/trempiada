@@ -1,17 +1,19 @@
 ## TODO
 
-### ✅ Core and UX shipped
+### ✅ Core and UX
 
 - [x] Geocoding service (text addresses → coordinates)
 - [x] Waze link parsing for route import
 - [x] Button-first UX (inline keyboards + persistent SOS keyboard during rides)
 - [x] Status and conflict-state UX: `/status` shows matched rides, open ride offers, and open ride requests with next actions; `/cancel` cancels active matches, open offers, or open requests; switching driver/rider roles requires cancelling the current open activity first.
+- [ ] `src/bot/ui.ts` - `renderProfile` should add 'Show picture' (if set) or 'Add picture' (if unset). When showing picture, have a 'Change picture' button.
+- [ ] `src/bot/registration.ts` - `registerRegistrationHandlers` restart flow should just forget the gender, name and photo (upon confirmation) so that they may be picked up as a later flow (request/offer a ride)
 
-### ✅ Matching and correctness backlog
+### ✅ Matching and correctness
 
-- [x] `MatchingService.findDriversForRider` / `findRidersForDriver` — compare estimated arrival-at-pickup time against the rider's time window so an en-route driver approaching the pickup point can match; keep rejecting drivers who already passed the pickup point.
+- [x] `MatchingService.findDriversForRider` / `findRidersForDriver` — compare estimated arrival-at-pickup time against the rider's time window so an en-route driver approaching the pickup point can match; keep rejecting drivers who already passed the pickup point
 
-### ✅ Test coverage backlog
+### ✅ Test coverage
 
 - [x] `tests/unit/utils.test.ts` — `parseTimeToday` (valid, midnight edge, invalid), `formatDuration`, `generateCode` (length + numeric-only)
 - [x] `tests/integration/repository.test.ts` — CRUD for users/cars/rides/requests/matches; `anonymizeUser` (PII removed, row kept); `adjustPoints`/`getPointsBalance`
@@ -22,7 +24,7 @@
 - [x] `tests/unit/handlers/account.test.ts` — `restart_apply` keeps active cars and social verification rows when the restart choices are "No"; removes only car data when `restartRemoveCar` is true; removes only social verification rows when `restartRemoveSocials` is true.
 - [x] `tests/unit/ui.test.ts` — `rideReviewContent` renders post vs save buttons based on `editingRideId`; `showStatus` includes modify actions for open driver offers and open rider requests.
 
-### 🔍 Later (underspecified / larger product work)
+### More info requried
 
 - [ ] Profile photo quality: send the photo to a face-crop service — if no face is detected, loop back and ask again. Show the cropped face and ask the user to confirm it's them, change the photo, or skip. If they skip, warn that having no photo reduces their trust score and makes drivers/riders less likely to accept them. Photo is stored as a Telegram file ID and only shared with the matched party (driver↔rider) when a match is confirmed, not before.
 - [ ] OAuth flows for social verification (Facebook, LinkedIn, Google)
@@ -32,11 +34,8 @@
 - [ ] Rate limiting and abuse detection refinements
 - [ ] Hebrew localization
 - [ ] `registerInRideHandlers` / cancellation flow: if multi-seat ride offers are added, cancelling one matched rider should reopen or revise the remaining offer instead of cancelling the whole ride.
-
-## Ideas
-
-- Vouch system: only allow users into the app from an invite link they receive from another user. The invite is one-time. Users are allowed to invite N people per time window to throttle growth and prevent abuse. The users are required to vouch for the people they invite. This way we obtain a trust graph network.
-- Add readme on how to update licenses.db - download the databases at:
+- [ ] Vouch system: only allow users into the app from an invite link they receive from another user. The invite is one-time. Users are allowed to invite N people per time window to throttle growth and prevent abuse. The users are required to vouch for the people they invite. This way we obtain a trust graph network.
+- [ ] Add readme on how to update licenses.db - download the databases at:
   1. https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/053cea08-09bc-40ec-8f7a-156f0677aff3
   2. https://data.gov.il/he/datasets/ministry_of_transport/degem-rechev-wltp/142afde2-6228-49f9-8a29-9b6c3a0cbe40
 
