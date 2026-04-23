@@ -129,3 +129,124 @@ test("open helpers ignore matched rides and requests once a match exists", () =>
   assert.equal(repo.getActiveMatchForUser(driver.id)?.id, match.id);
   assert.equal(repo.getActiveMatchForUser(rider.id)?.id, match.id);
 });
+
+test("repository supports CRUD for users, cars, rides, requests, and matches", () => {
+  const repo = makeRepo();
+  const user = repo.createUser(77_001, "Alice");
+  assert.equal(repo.getUserByTelegramId(77_001)?.id, user.id);
+
+  repo.updateUserProfile(user.id, {
+    firstName: "Alice Updated",
+    gender: "female",
+    photoFileId: "photo-file",
+  });
+  assert.equal(repo.getUserById(user.id)?.firstName, "Alice Updated");
+
+  const car = repo.addCar({
+    userId: user.id,
+    plateNumber: "11-222-33",
+    make: "Hyundai",
+    model: "Ioniq",
+    color: "Blue",
+    year: 2021,
+    seatCount: 4,
+    photoFileId: "car-photo",
+  });
+  assert.equal(repo.getActiveCar(user.id)?.id, car.id);
+
+  const ride = repo.createRide({
+    driverId: user.id,
+    carId: car.id,
+    originLat: 32.08,
+    originLng: 34.78,
+    originLabel: "Origin",
+    destLat: 31.77,
+    destLng: 35.21,
+    destLabel: "Dest",
+    routeGeometry: null,
+    estimatedDuration: 3600,
+    departureTime: minutesFromNow(30),
+    maxDetourMinutes: 10,
+    availableSeats: 2,
+  });
+  assert.equal(repo.getRideById(ride.id)?.status, "open");
+
+  const rider = repo.createUser(77_002, "Bob");
+  const request = repo.createRideRequest({
+    riderId: rider.id,
+    pickupLat: 32.1,
+    pickupLng: 34.8,
+    pickupLabel: "Pickup",
+    dropoffLat: 31.8,
+    dropoffLng: 35.1,
+    dropoffLabel: "Dropoff",
+    earliestDeparture: minutesFromNow(0),
+    latestDeparture: minutesFromNow(60),
+  });
+  assert.equal(repo.getRideRequestById(request.id)?.status, "open");
+
+  const match = repo.createMatch({
+    rideId: ride.id,
+    requestId: request.id,
+    riderId: rider.id,
+    driverId: user.id,
+    pickupLat: request.pickupLat,
+    pickupLng: request.pickupLng,
+    dropoffLat: request.dropoffLat,
+    dropoffLng: request.dropoffLng,
+    detourSeconds: 180,
+    confirmationCode: "9999",
+    pointsCost: 0,
+  });
+  assert.equal(repo.getMatchById(match.id)?.status, "pending");
+
+  repo.updateMatchStatus(match.id, "accepted");
+  repo.updateRideStatus(ride.id, "matched");
+  repo.updateRequestStatus(request.id, "matched");
+  assert.equal(repo.getMatchById(match.id)?.status, "accepted");
+  assert.equal(repo.getRideById(ride.id)?.status, "matched");
+  assert.equal(repo.getRideRequestById(request.id)?.status, "matched");
+});
+
+test("anonymizeUser removes PII while keeping user row", () => {
+  const repo = makeRepo();
+  const user = repo.createUser(77_100, "Sensitive User");
+  repo.updateUserProfile(user.id, {
+    gender: "male",
+    photoFileId: "private-photo",
+    phone: "+972123456",
+  });
+  repo.addVerification({ userId: user.id, type: "facebook", externalRef: "fb:secret" });
+  repo.addCar({
+    userId: user.id,
+    plateNumber: "99-999-99",
+    make: "Toyota",
+    model: "Yaris",
+    color: "Silver",
+    year: 2019,
+    seatCount: 4,
+    photoFileId: "car-private-photo",
+  });
+
+  repo.anonymizeUser(user.id);
+
+  const anonymized = repo.getUserById(user.id)!;
+  assert.equal(anonymized.firstName, "Deleted User");
+  assert.equal(anonymized.gender, null);
+  assert.equal(anonymized.photoFileId, null);
+  assert.equal(anonymized.phone, null);
+  assert.equal(anonymized.isSuspended, true);
+  assert.equal(repo.getVerifications(user.id).length, 0);
+  assert.equal(repo.getActiveCar(user.id)?.plateNumber, "DELETED");
+});
+
+test("adjustPoints updates balance and getPointsBalance returns it", () => {
+  const repo = makeRepo();
+  const user = repo.createUser(77_200, "Points User");
+
+  assert.equal(repo.getPointsBalance(user.id), 5);
+  repo.adjustPoints(user.id, 2.5);
+  assert.equal(repo.getPointsBalance(user.id), 7.5);
+  repo.adjustPoints(user.id, -1.2);
+  assert.equal(repo.getPointsBalance(user.id), 6.3);
+});
