@@ -1,10 +1,11 @@
 import { Markup } from "telegraf";
-import type { Telegraf } from "telegraf";
+import type { Context, Telegraf } from "telegraf";
 import type { BotDeps } from "../deps";
 import type { Gender, VerificationType } from "../../types";
 import { POINTS } from "../../types";
 import { SOCIAL_VERIFICATION_TYPES } from "./restart-profile";
 import {
+  backToMenuKeyboard,
   mainMenuKeyboard,
   showMainMenu,
   replyNotRegistered,
@@ -16,6 +17,29 @@ import {
 } from "../ui";
 export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
   const { repo, sessions, notify, logger } = deps;
+
+  async function returnToHome(telegramId: number, ctx: Context): Promise<void> {
+    const session = sessions.get(telegramId);
+    if (!session.userId) {
+      await replyNotRegistered(ctx);
+      return;
+    }
+
+    sessions.reset(telegramId);
+    const activeMatch = repo.getActiveMatchForUser(session.userId);
+    const openRide = repo.getOpenRideForDriver(session.userId);
+    const openRequest = repo.getOpenRideRequestForRider(session.userId);
+
+    if (activeMatch || openRide || openRequest) {
+      await showStatus(ctx, { userId: session.userId, repo });
+      return;
+    }
+
+    const user = repo.getUserById(session.userId);
+    if (user) {
+      await showMainMenu(ctx, user.firstName);
+    }
+  }
 
   // /start — entry point
   bot.start(async (ctx) => {
@@ -115,7 +139,7 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     sessions.setScene({ telegramId, scene: "profile_restart_name" });
     await ctx.reply(
       `Let's update your profile.\n\nWhat's your name?\n\nCurrent: *${user.firstName}*`,
-      { parse_mode: "Markdown" },
+      { parse_mode: "Markdown", ...backToMenuKeyboard() },
     );
   });
 
@@ -357,6 +381,19 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const user = repo.getUserById(session.userId)!;
     sessions.setScene({ telegramId, scene: "idle" });
     await showMainMenu(ctx, user.firstName);
+  });
+
+  bot.action("back_to_menu", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    logger.info("flow_exited_back_to_menu", {
+      telegramId,
+      userId: session.userId,
+      previousScene: session.scene,
+    });
+    await ctx.editMessageText("Left that flow.");
+    await returnToHome(telegramId, ctx);
   });
 
   bot.action("sos_button", async (ctx) => {

@@ -5,9 +5,20 @@ import { SessionManager } from "../../../src/bot/session";
 import type { BotDeps } from "../../../src/bot/deps";
 
 type Handler = (ctx: any) => Promise<void> | void;
+type Middleware = (ctx: any, next: () => Promise<void>) => Promise<void> | void;
 
 export class FakeBot {
   actions = new Map<string, Handler>();
+  middlewares: Middleware[] = [];
+  handlers = new Map<string, Handler>();
+  telegram = {
+    async setMyCommands() {
+      return undefined;
+    },
+    async sendMessage() {
+      return undefined;
+    },
+  };
 
   action(trigger: string | RegExp, handler: Handler): this {
     if (typeof trigger === "string") {
@@ -23,11 +34,46 @@ export class FakeBot {
   start(): this {
     return this;
   }
+
+  use(middleware: Middleware): this {
+    this.middlewares.push(middleware);
+    return this;
+  }
+
+  on(event: string, handler: Handler): this {
+    this.handlers.set(event, handler);
+    return this;
+  }
+
+  async emit(event: string, ctx: any): Promise<void> {
+    const handler = this.handlers.get(event);
+    const stack = [...this.middlewares];
+    if (handler) {
+      stack.push(async (innerCtx, next) => {
+        await handler(innerCtx);
+        await next();
+      });
+    }
+
+    let index = -1;
+    const dispatch = async (nextIndex: number): Promise<void> => {
+      if (nextIndex <= index) throw new Error("next() called multiple times");
+      index = nextIndex;
+      const fn = stack[nextIndex];
+      if (!fn) return;
+      await fn(ctx, () => dispatch(nextIndex + 1));
+    };
+
+    await dispatch(0);
+  }
 }
 
 export interface FakeCtx {
   from: { id: number; first_name: string };
   message?: any;
+  update?: any;
+  updateType?: string;
+  telegram?: any;
   replies: Array<{ text: string; extra: any }>;
   edits: Array<{ text: string; extra: any }>;
   answerCbQueryCalls: unknown[];
@@ -40,6 +86,13 @@ export function makeCtx({ telegramId, message }: { telegramId: number; message?:
   const ctx: FakeCtx = {
     from: { id: telegramId, first_name: "Test" },
     message,
+    update: { update_id: 1, message },
+    updateType: message ? "message" : undefined,
+    telegram: {
+      async getUserProfilePhotos() {
+        return { total_count: 0, photos: [] };
+      },
+    },
     replies: [],
     edits: [],
     answerCbQueryCalls: [],

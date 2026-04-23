@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { VerificationType } from "../../../src/types";
 import { registerAccountHandlers } from "../../../src/bot/handlers/account";
-import { FakeBot, createDeps, makeCtx } from "./helpers";
+import { FakeBot, createDeps, inlineButtonTexts, makeCtx } from "./helpers";
 
 function seedRestartProfileCase({
   restartRemoveCar,
@@ -100,4 +100,63 @@ test("restart_apply removes only social verifications when restartRemoveSocials 
 
   assert.notEqual(repo.getActiveCar(userId), null);
   assert.deepEqual(verificationTypes(repo, userId), new Set<VerificationType>(["photo", "car"]));
+});
+
+test("back_to_menu resets draft flow and returns user to main menu when no active activity exists", async () => {
+  const bot = new FakeBot();
+  const { repo, sessions, deps } = createDeps();
+  const telegramId = 40_010;
+  const user = repo.createUser(telegramId, "Dana");
+  sessions.setUserId(telegramId, user.id);
+  sessions.setScene({
+    telegramId,
+    scene: "ride_origin",
+    data: { originLabel: "Draft start" },
+  });
+  registerAccountHandlers(bot as any, deps);
+
+  const ctx = makeCtx({ telegramId });
+  await bot.actions.get("back_to_menu")!(ctx);
+
+  assert.equal(sessions.get(telegramId).scene, "idle");
+  assert.equal(sessions.get(telegramId).data.originLabel, undefined);
+  assert.equal(ctx.edits.at(-1)?.text, "Left that flow.");
+  assert.equal(ctx.replies.at(-1)?.text, "What would you like to do, Dana?");
+  const buttons = inlineButtonTexts(ctx.replies.at(-1)?.extra);
+  assert.ok(buttons.includes("🚗 Offer a ride"));
+});
+
+test("back_to_menu keeps open request active and returns user to status", async () => {
+  const bot = new FakeBot();
+  const { repo, sessions, deps } = createDeps();
+  const telegramId = 40_011;
+  const user = repo.createUser(telegramId, "Rider");
+  const request = repo.createRideRequest({
+    riderId: user.id,
+    pickupLat: 32.07,
+    pickupLng: 34.77,
+    pickupLabel: "Tel Aviv",
+    dropoffLat: 31.77,
+    dropoffLng: 35.21,
+    dropoffLabel: "Jerusalem",
+    earliestDeparture: new Date().toISOString(),
+    latestDeparture: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  sessions.setUserId(telegramId, user.id);
+  sessions.setScene({
+    telegramId,
+    scene: "request_pickup",
+    data: { pickupLabel: "Unsaved draft pickup" },
+  });
+  registerAccountHandlers(bot as any, deps);
+
+  const ctx = makeCtx({ telegramId });
+  await bot.actions.get("back_to_menu")!(ctx);
+
+  assert.equal(sessions.get(telegramId).scene, "idle");
+  assert.equal(repo.getOpenRideRequestForRider(user.id)?.id, request.id);
+  assert.match(ctx.replies.at(-1)?.text ?? "", /You are requesting a ride/i);
+  const buttons = inlineButtonTexts(ctx.replies.at(-1)?.extra);
+  assert.ok(buttons.includes("Modify request"));
+  assert.ok(buttons.includes("Cancel request"));
 });

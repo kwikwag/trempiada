@@ -14,6 +14,7 @@ import type { Match, Ride, RideRequest, User } from "../types";
 
 export const SOS_KEYBOARD = Markup.keyboard([["🚨 SOS"]]).resize();
 export const REMOVE_KEYBOARD = Markup.removeKeyboard();
+type InlineButton = ReturnType<typeof Markup.button.callback>;
 
 export function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
@@ -30,6 +31,31 @@ export function mainMenuKeyboard() {
 
 export function statusKeyboard() {
   return Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]);
+}
+
+export function withBackToMenuButton(rows: InlineButton[][]) {
+  return Markup.inlineKeyboard([...rows, [Markup.button.callback("Back to menu", "back_to_menu")]]);
+}
+
+export function backToMenuKeyboard() {
+  return withBackToMenuButton([]);
+}
+
+export function genderKeyboard() {
+  return withBackToMenuButton([
+    [Markup.button.callback("Male", "gender_male")],
+    [Markup.button.callback("Female", "gender_female")],
+    [Markup.button.callback("Other", "gender_other")],
+  ]);
+}
+
+export function verificationKeyboard() {
+  return withBackToMenuButton([
+    [Markup.button.callback("Facebook", "verify_facebook")],
+    [Markup.button.callback("LinkedIn", "verify_linkedin")],
+    [Markup.button.callback("Google", "verify_google")],
+    [Markup.button.callback("Email", "verify_email")],
+  ]);
 }
 
 export async function replyNotRegistered(ctx: Context): Promise<void> {
@@ -326,7 +352,7 @@ function formatStatusTime(iso: string): string {
 }
 
 export function cancellationKeyboard() {
-  return Markup.inlineKeyboard([
+  return withBackToMenuButton([
     [Markup.button.callback("Changed plans", "cancel_changed_plans")],
     [Markup.button.callback("Other party didn't show", "cancel_no_show")],
     [Markup.button.callback("Felt unsafe", "cancel_felt_unsafe")],

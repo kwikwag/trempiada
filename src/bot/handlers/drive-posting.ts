@@ -8,11 +8,14 @@ import type { Car, Ride } from "../../types";
 import { formatTrustProfile, formatDuration, parseTimeToday, formatCarInfo } from "../../utils";
 import { ensureProfileComplete } from "./profile";
 import {
+  backToMenuKeyboard,
   showMainMenu,
   rideReviewContent,
   replyWithRideReview,
   resolveLocation,
   statusKeyboard,
+  verificationKeyboard,
+  withBackToMenuButton,
 } from "../ui";
 
 const MATCHED_RIDE_EDIT_BLOCK_MESSAGE =
@@ -156,6 +159,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     logger.info("ride_departure_custom_requested", { telegramId });
     await ctx.editMessageText("When are you leaving?\n\nEnter a time like *18:00* or *6:30 PM*.", {
       parse_mode: "Markdown",
+      ...backToMenuKeyboard(),
     });
   });
 
@@ -207,6 +211,7 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
     });
     await ctx.editMessageText(
       "Send me your new starting point.\n\n📍 Drop a pin or type an address.",
+      backToMenuKeyboard(),
     );
   });
 
@@ -220,7 +225,10 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
       telegramId,
       userId: sessions.get(telegramId).userId,
     });
-    await ctx.editMessageText("Send me your new destination.\n\n📍 Drop a pin or type an address.");
+    await ctx.editMessageText(
+      "Send me your new destination.\n\n📍 Drop a pin or type an address.",
+      backToMenuKeyboard(),
+    );
   });
 
   bot.action("edit_ride_car", async (ctx) => {
@@ -263,8 +271,8 @@ export function registerDrivePostingHandlers(bot: Telegraf, deps: BotDeps): void
   });
 }
 
-function rideDepartureKeyboard() {
-  return Markup.inlineKeyboard([
+export function rideDepartureKeyboard() {
+  return withBackToMenuButton([
     [Markup.button.callback("Now", "depart_now")],
     [Markup.button.callback("In 30 min", "depart_30")],
     [Markup.button.callback("In 1 hour", "depart_60")],
@@ -404,10 +412,11 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
     const loc = await resolveLocation(msg, geocoding);
     if (!loc) {
       if (!("location" in msg) && !("text" in msg)) {
-        await ctx.reply("Send a location pin or type an address.");
+        await ctx.reply("Send a location pin or type an address.", backToMenuKeyboard());
       } else {
         await ctx.reply(
           "Couldn't find that address. Try a more specific address, or send a location pin.",
+          backToMenuKeyboard(),
         );
       }
       return true;
@@ -441,7 +450,10 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
     }
 
     sessions.setScene({ telegramId, scene: "ride_destination" });
-    await ctx.reply("Got it. And your destination? (drop a pin or type an address)");
+    await ctx.reply(
+      "Got it. And your destination? (drop a pin or type an address)",
+      backToMenuKeyboard(),
+    );
     return true;
   }
 
@@ -449,12 +461,16 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
   if (session.scene === "ride_destination") {
     if (!(await ensurePostedRideStillEditable({ ctx, telegramId, deps }))) return true;
 
-    if (!("location" in msg) && !("text" in msg)) return true;
+    if (!("location" in msg) && !("text" in msg)) {
+      await ctx.reply("Send a location pin or type an address.", backToMenuKeyboard());
+      return true;
+    }
 
     const loc = await resolveLocation(msg, geocoding);
     if (!loc) {
       await ctx.reply(
         "Couldn't find that address. Try a more specific address, or send a location pin.",
+        backToMenuKeyboard(),
       );
       return true;
     }
@@ -505,6 +521,7 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
     if (!departure) {
       await ctx.reply("I couldn't read that time. Try something like *18:00* or *6:30 PM*.", {
         parse_mode: "Markdown",
+        ...backToMenuKeyboard(),
       });
       return true;
     }
@@ -528,7 +545,7 @@ export async function handleDrivePostingMessage(ctx: Context, deps: BotDeps): Pr
     const seats = Number.parseInt(msg.text.trim(), 10);
     const maxSeats = session.data.carSeatCount ?? session.data.seats;
     if (!Number.isInteger(seats) || seats < 1 || seats > maxSeats) {
-      await ctx.reply(`Enter a number from 1 to ${maxSeats}.`);
+      await ctx.reply(`Enter a number from 1 to ${maxSeats}.`, backToMenuKeyboard());
       return true;
     }
 
@@ -616,12 +633,7 @@ async function promptDriverVerification({
   await ctx.reply(
     "Drivers need at least one identity verification to offer rides. This helps riders feel safe.\n\n" +
       "Choose a verification method:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback("Facebook", "verify_facebook")],
-      [Markup.button.callback("LinkedIn", "verify_linkedin")],
-      [Markup.button.callback("Google", "verify_google")],
-      [Markup.button.callback("Email", "verify_email")],
-    ]),
+    verificationKeyboard(),
   );
 }
 
@@ -734,6 +746,7 @@ export async function ensureDriverReady({
       (pendingData.pendingWazeDriveUrl ? "I saved the Waze drive. " : "") +
         "First time driving? Let's register your car.\n\n" +
         "Send me a photo of the back of your car so the license plate is visible.",
+      backToMenuKeyboard(),
     );
     return null;
   }
@@ -790,6 +803,7 @@ export async function startDrivePostingFlow({
     `Send me your starting point — you can:\n` +
       `📍 Drop a pin (tap the attachment icon)\n` +
       `✍️ Type an address or place name`,
+    backToMenuKeyboard(),
   );
 }
 

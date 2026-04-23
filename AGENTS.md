@@ -95,6 +95,8 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 
 - Primary interaction is **inline keyboard buttons**, not slash commands
 - Slash commands exist as aliases (discoverable via Telegram's `/` menu via `setMyCommands`)
+- When a user sends unsupported input for the current scene, reply with a short scene-aware reminder of what the bot is waiting for; do not silently ignore it
+- Wizard-style scene flows should offer a consistent **Back to menu** inline button that clears only temporary flow state. It must not cancel an active match, open ride offer, or open ride request
 - A **main menu** (inline keyboard) is shown after: `/start`, registration, ride completion, cancellation
 - A **persistent SOS reply keyboard** is shown to both parties from match acceptance until ride end or cancellation — it is the only reply keyboard used and must be explicitly removed with `Markup.removeKeyboard()` on ride conclusion
 - `showMainMenu(ctx, name)` is the canonical way to return a user to idle state — prefer it over ad-hoc text prompts

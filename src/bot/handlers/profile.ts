@@ -1,6 +1,6 @@
-import { Markup } from "telegraf";
 import type { Context } from "telegraf";
 import type { BotDeps } from "../deps";
+import { backToMenuKeyboard, genderKeyboard } from "../ui";
 
 export async function ensureProfileComplete({
   ctx,
@@ -32,11 +32,7 @@ export async function ensureProfileComplete({
     });
     await ctx.reply(
       "What's your gender? Some riders might feel more safe if you share this info.",
-      Markup.inlineKeyboard([
-        [Markup.button.callback("Male", "gender_male")],
-        [Markup.button.callback("Female", "gender_female")],
-        [Markup.button.callback("Other", "gender_other")],
-      ]),
+      genderKeyboard(),
     );
     return false;
   }
@@ -68,7 +64,10 @@ export async function ensureProfileComplete({
       userId: session.userId,
       pendingAction,
     });
-    await ctx.reply("Please send a photo of your face so the other party can recognize you. 📸");
+    await ctx.reply(
+      "Please send a photo of your face so the other party can recognize you. 📸",
+      backToMenuKeyboard(),
+    );
     return false;
   }
 

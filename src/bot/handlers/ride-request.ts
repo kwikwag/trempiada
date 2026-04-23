@@ -2,7 +2,13 @@ import { Markup } from "telegraf";
 import type { Telegraf, Context } from "telegraf";
 import type { BotDeps } from "../deps";
 import type { RideRequest } from "../../types";
-import { mainMenuKeyboard, resolveLocation, statusKeyboard } from "../ui";
+import {
+  backToMenuKeyboard,
+  mainMenuKeyboard,
+  resolveLocation,
+  statusKeyboard,
+  withBackToMenuButton,
+} from "../ui";
 import { ensureProfileComplete } from "./profile";
 
 const MATCHED_REQUEST_EDIT_BLOCK_MESSAGE =
@@ -245,11 +251,11 @@ async function startRequestLocationEdit({
   const config = REQUEST_LOCATION_EDIT[field];
   deps.sessions.updateData(telegramId, { requestEditField: field });
   deps.sessions.setScene({ telegramId, scene: config.scene });
-  await ctx.editMessageText(config.prompt);
+  await ctx.editMessageText(config.prompt, backToMenuKeyboard());
 }
 
-function requestTimeWindowKeyboard() {
-  return Markup.inlineKeyboard([
+export function requestTimeWindowKeyboard() {
+  return withBackToMenuButton([
     [Markup.button.callback("Within 30 minutes", "req_time_30")],
     [Markup.button.callback("Within 1 hour", "req_time_60")],
     [Markup.button.callback("Within 2 hours", "req_time_120")],
@@ -282,7 +288,7 @@ function setRequestReviewFromRequest({
   });
 }
 
-function requestReviewContent(telegramId: number, deps: BotDeps) {
+export function requestReviewContent(telegramId: number, deps: BotDeps) {
   const session = deps.sessions.get(telegramId);
   const isEditing = typeof session.data.editingRequestId === "number";
 
@@ -625,7 +631,10 @@ export async function startRideRequestFlow({
 
   sessions.setScene({ telegramId, scene: "request_pickup", data: {} });
   logger.info("request_flow_started", { telegramId, userId, source });
-  await ctx.reply(`Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`);
+  await ctx.reply(
+    `Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`,
+    backToMenuKeyboard(),
+  );
 }
 
 export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Promise<boolean> {
@@ -643,9 +652,10 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
       if ("location" in msg || "text" in msg) {
         await ctx.reply(
           "Couldn't find that address. Try a more specific address, or send a location pin.",
+          backToMenuKeyboard(),
         );
       } else {
-        await ctx.reply("Send a location pin or type an address.");
+        await ctx.reply("Send a location pin or type an address.", backToMenuKeyboard());
       }
       return true;
     }
@@ -677,6 +687,7 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
     });
     await ctx.reply(
       "Got it. Where do you need to be dropped off?\n\n📍 Drop a pin or type an address.",
+      backToMenuKeyboard(),
     );
     return true;
   }
@@ -690,9 +701,10 @@ export async function handleRideRequestMessage(ctx: Context, deps: BotDeps): Pro
       if ("location" in msg || "text" in msg) {
         await ctx.reply(
           "Couldn't find that address. Try a more specific address, or send a location pin.",
+          backToMenuKeyboard(),
         );
       } else {
-        await ctx.reply("Send a location pin or type an address.");
+        await ctx.reply("Send a location pin or type an address.", backToMenuKeyboard());
       }
       return true;
     }

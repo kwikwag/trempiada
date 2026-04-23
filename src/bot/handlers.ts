@@ -1,4 +1,4 @@
-import { Telegraf } from "telegraf";
+import { Markup, Telegraf } from "telegraf";
 import type { Repository } from "../db/repository";
 import type { SessionManager } from "./session";
 import type { MatchingService } from "../services/matching";
@@ -15,15 +15,27 @@ import {
   handleDrivePostingMessage,
   startDrivePostingFlow,
   createWazeDriveFromUrl,
+  rideDepartureKeyboard,
 } from "./handlers/drive-posting";
 import {
   registerRideRequestHandlers,
   handleRideRequestMessage,
   startRideRequestFlow,
+  requestReviewContent,
+  requestTimeWindowKeyboard,
 } from "./handlers/ride-request";
 import { registerInRideHandlers, handleInRideMessage } from "./handlers/in-ride";
 import { registerAccountHandlers } from "./handlers/account";
-import { replyNotRegistered } from "./ui";
+import {
+  backToMenuKeyboard,
+  cancellationKeyboard,
+  genderKeyboard,
+  mainMenuKeyboard,
+  replyNotRegistered,
+  replyWithRideReview,
+  statusKeyboard,
+  verificationKeyboard,
+} from "./ui";
 import type { Logger, LogContext } from "../logger";
 import { noopLogger } from "../logger";
 
@@ -73,6 +85,151 @@ function updateMetadata(ctx: any, sessions: SessionManager): LogContext {
     command: text?.startsWith("/") ? text.split(/\s+/, 1)[0] : undefined,
     callbackData,
   };
+}
+
+async function replyUnexpectedInput(ctx: any, deps: BotDeps): Promise<void> {
+  const telegramId = ctx.from!.id;
+  const { sessions } = deps;
+  const session = sessions.get(telegramId);
+
+  switch (session.scene) {
+    case "idle":
+      await ctx.reply("Choose what you'd like to do below.", mainMenuKeyboard());
+      return;
+    case "registration_gender":
+      await ctx.reply("Please choose your gender using the buttons below.", genderKeyboard());
+      return;
+    case "registration_photo":
+      await ctx.reply(
+        "Please send a clear selfie photo, or tap Back to menu.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "registration_verification":
+    case "registration_verification_choice":
+      await ctx.reply(
+        "Please choose a verification method below, or tap Back to menu.",
+        verificationKeyboard(),
+      );
+      return;
+    case "car_registration_photo":
+      await ctx.reply(
+        "Please send a photo of the rear of your car with the plate visible, or tap Back to menu.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "car_registration_confirm":
+      await ctx.reply(
+        "Please use the buttons on the previous message to confirm your car details, or tap Back to menu.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "car_edit":
+      await ctx.reply(
+        "Please send the updated car detail as text, or tap Back to menu.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "ride_origin":
+      await ctx.reply(
+        "I'm waiting for your starting point. Send a pin or type an address.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "ride_destination":
+      await ctx.reply(
+        "I'm waiting for your destination. Send a pin or type an address.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "ride_departure":
+      await ctx.reply(
+        "Please choose when you're leaving using the buttons below.",
+        rideDepartureKeyboard(),
+      );
+      return;
+    case "ride_departure_custom":
+      await ctx.reply("Send a time like *18:00* or *6:30 PM*.", {
+        parse_mode: "Markdown",
+        ...backToMenuKeyboard(),
+      });
+      return;
+    case "ride_review":
+      await replyWithRideReview(ctx, { telegramId, sessions });
+      return;
+    case "ride_edit":
+      if (session.data.editField === "seats") {
+        const maxSeats = session.data.carSeatCount ?? session.data.seats;
+        await ctx.reply(
+          `Enter a number from 1 to ${maxSeats}, or tap Back to menu.`,
+          backToMenuKeyboard(),
+        );
+      } else {
+        await ctx.reply(
+          "Please use the buttons on the previous message to continue, or tap Back to menu.",
+          backToMenuKeyboard(),
+        );
+      }
+      return;
+    case "request_pickup":
+      await ctx.reply(
+        "I'm waiting for your pickup point. Send a pin or type an address.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "request_dropoff":
+      await ctx.reply(
+        "I'm waiting for your dropoff point. Send a pin or type an address.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "request_time":
+      await ctx.reply(
+        "Please choose a time window using the buttons below.",
+        requestTimeWindowKeyboard(),
+      );
+      return;
+    case "request_review": {
+      const review = requestReviewContent(telegramId, deps);
+      await ctx.reply(review.text, review.extra);
+      return;
+    }
+    case "match_pending":
+      await ctx.reply(
+        "You're waiting for the other party to confirm. Use the button below to check your status.",
+        statusKeyboard(),
+      );
+      return;
+    case "in_ride_relay":
+      await ctx.reply(
+        "I can relay text messages here. Send a text message, or tap SOS if you need urgent help.",
+        Markup.inlineKeyboard([[Markup.button.callback("Show my status", "menu_status")]]),
+      );
+      return;
+    case "rating":
+      await ctx.reply("Please rate using the buttons on the previous message.");
+      return;
+    case "cancel_reason":
+      await ctx.reply(
+        "Please choose a cancellation reason below, or tap Back to menu.",
+        cancellationKeyboard(),
+      );
+      return;
+    case "dispute_description":
+      await ctx.reply("Please describe what happened, or tap Back to menu.", backToMenuKeyboard());
+      return;
+    case "profile_restart_name":
+      await ctx.reply("Please type your name, or tap Back to menu.", backToMenuKeyboard());
+      return;
+    case "profile_restart_confirm":
+      await ctx.reply(
+        "Please use the buttons on the previous message to confirm or cancel your profile update.",
+        backToMenuKeyboard(),
+      );
+      return;
+    default:
+      await ctx.reply("Please use the buttons below to continue.", statusKeyboard());
+  }
 }
 
 export function registerHandlers({
@@ -239,7 +396,9 @@ export function registerHandlers({
     const session = sessions.get(ctx.from!.id);
     if (!session.userId) {
       await replyNotRegistered(ctx);
+      return;
     }
+    await replyUnexpectedInput(ctx, deps);
   });
 
   // ---- Register bot command list in Telegram UI ----

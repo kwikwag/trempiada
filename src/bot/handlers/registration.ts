@@ -1,7 +1,13 @@
 import { Markup } from "telegraf";
 import type { Telegraf, Context } from "telegraf";
 import type { BotDeps } from "../deps";
-import { showMainMenu, replyWithRideReview } from "../ui";
+import {
+  backToMenuKeyboard,
+  genderKeyboard,
+  showMainMenu,
+  replyWithRideReview,
+  withBackToMenuButton,
+} from "../ui";
 import { formatCarInfo } from "../../utils";
 import type { SessionState } from "../../types";
 import {
@@ -147,6 +153,7 @@ export function registerRegistrationHandlers({
         await ctx.editMessageText(
           "Got it.\n\nNow, send me a photo of yourself. " +
             "This helps the other party recognize you.",
+          backToMenuKeyboard(),
         );
         return;
       }
@@ -179,6 +186,7 @@ export function registerRegistrationHandlers({
         await ctx.editMessageText(
           "Got it.\n\nNow, send me a photo of yourself. " +
             "This helps the other party recognize you.",
+          backToMenuKeyboard(),
         );
         return;
       }
@@ -280,14 +288,14 @@ export function registerRegistrationHandlers({
       scene: "car_registration_photo",
       data: changingCarForRide ? { changingCarForRide, savedRideData } : {},
     });
-    await ctx.editMessageText("No problem. Send another photo of your car.");
+    await ctx.editMessageText("No problem. Send another photo of your car.", backToMenuKeyboard());
   });
 
   bot.action("car_confirm_edit", async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(
       "What do you want to fix?",
-      Markup.inlineKeyboard([
+      withBackToMenuButton([
         [Markup.button.callback("Plate number", "car_edit_plate")],
         [Markup.button.callback("Seats available", "car_edit_seats")],
         [Markup.button.callback("Make / model", "car_edit_make")],
@@ -310,7 +318,10 @@ export function registerRegistrationHandlers({
       const telegramId = ctx.from!.id;
       sessions.updateData(telegramId, { carEditField: field });
       sessions.setScene({ telegramId, scene: "car_edit" });
-      await ctx.editMessageText(carEditPrompts[field], { parse_mode: "Markdown" });
+      await ctx.editMessageText(carEditPrompts[field], {
+        parse_mode: "Markdown",
+        ...backToMenuKeyboard(),
+      });
     });
   }
 
@@ -327,18 +338,14 @@ export function registerRegistrationHandlers({
         return true;
       }
       sessions.updateData(telegramId, { newName: name, restartMode: true });
-      await ctx.reply(
-        "Got it. What's your gender?",
-        Markup.inlineKeyboard([
-          [Markup.button.callback("Male", "gender_male")],
-          [Markup.button.callback("Female", "gender_female")],
-          [Markup.button.callback("Other", "gender_other")],
-        ]),
-      );
+      await ctx.reply("Got it. What's your gender?", genderKeyboard());
       return true;
     }
 
-    if (session.scene === "profile_restart_name") return true; // ignore non-text
+    if (session.scene === "profile_restart_name") {
+      await ctx.reply("Please type your name, or tap Back to menu.", backToMenuKeyboard());
+      return true;
+    }
 
     if (session.scene === "profile_restart_confirm") {
       await ctx.reply("Please use the buttons to confirm or cancel your profile update.");
@@ -371,7 +378,10 @@ export function registerRegistrationHandlers({
     }
 
     if (session.scene === "registration_photo" && !("photo" in msg)) {
-      await ctx.reply("Please send a photo of yourself (just a normal selfie).");
+      await ctx.reply(
+        "Please send a photo of yourself (just a normal selfie), or tap Back to menu.",
+        backToMenuKeyboard(),
+      );
       return true;
     }
 
@@ -397,6 +407,7 @@ export function registerRegistrationHandlers({
           "I couldn't read the car details from that photo. " +
             "Please try again with a clearer shot of the rear of the car, " +
             "with the license plate visible.",
+          backToMenuKeyboard(),
         );
         return true;
       }
@@ -419,7 +430,7 @@ export function registerRegistrationHandlers({
           `🔢 Plate: ${carDetails.plateNumber}\n` +
           `👥 Seats: ${carDetails.seatCount}\n\n` +
           `Does this look right?`,
-        Markup.inlineKeyboard([
+        withBackToMenuButton([
           [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
           [Markup.button.callback("Fix something", "car_confirm_edit")],
           [Markup.button.callback("Try another photo", "car_confirm_retry")],
@@ -471,7 +482,7 @@ export function registerRegistrationHandlers({
           `\n` +
           `🔢 Plate: ${carDetails.plateNumber}\n` +
           `👥 Seats: ${carDetails.seatCount}\n\nDoes this look right?`,
-        Markup.inlineKeyboard([
+        withBackToMenuButton([
           [Markup.button.callback("Yes, looks good", "car_confirm_yes")],
           [Markup.button.callback("Fix something", "car_confirm_edit")],
           [Markup.button.callback("Try another photo", "car_confirm_retry")],
