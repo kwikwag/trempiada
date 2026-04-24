@@ -6,4 +6,8 @@ const base = process.env.VITE_BASE_URL ?? "/trempiada/liveness/";
 export default defineConfig({
   base,
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
+  },
 });

@@ -4,6 +4,7 @@ import {
   FaceLivenessDetectorCore,
   type AwsCredentialProvider,
 } from "@aws-amplify/ui-react-liveness";
+import { MockDetector } from "./MockDetector";
 
 type AwsCredentials = {
   accessKeyId: string;
@@ -33,7 +34,7 @@ type AppState =
   | { kind: "detector-error"; message: string }
   | { kind: "complete"; returnToTelegramUrl?: string };
 
-const bootstrapUrl = import.meta.env.VITE_LIVENESS_BOOTSTRAP_URL;
+const returnToTelegramFallbackUrl = "https://t.me/trempiadabot";
 
 function getTokenFromQuery(): string | null {
   const params = new URLSearchParams(window.location.search);
@@ -47,6 +48,11 @@ function getTokenFromQuery(): string | null {
   return trimmedToken.length > 0 ? trimmedToken : null;
 }
 
+function shouldUseMockDetector(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("mock") === "1" || import.meta.env.VITE_LIVENESS_MOCK === "1";
+}
+
 function toAwsCredentials(credentials: BootstrapCredentials): AwsCredentials {
   return {
     accessKeyId: credentials.accessKeyId,
@@ -57,6 +63,10 @@ function toAwsCredentials(credentials: BootstrapCredentials): AwsCredentials {
 }
 
 async function bootstrapLiveness(token: string): Promise<BootstrapResponse> {
+  const bootstrapUrl =
+    import.meta.env.VITE_LIVENESS_BOOTSTRAP_URL ??
+    (window as Window & { __LIVENESS_BOOTSTRAP_URL__?: string }).__LIVENESS_BOOTSTRAP_URL__;
+
   if (!bootstrapUrl) {
     throw new Error("Missing VITE_LIVENESS_BOOTSTRAP_URL");
   }
@@ -113,12 +123,29 @@ function closeTelegramWebApp(): boolean {
 function App() {
   const bootstrapStartedRef = useRef(false);
   const token = useMemo(getTokenFromQuery, []);
+  const useMockDetector = useMemo(shouldUseMockDetector, []);
   const [state, setState] = useState<AppState>(() =>
-    token ? { kind: "loading", message: "Preparing camera check..." } : { kind: "invalid-token" },
+    useMockDetector
+      ? {
+          kind: "ready",
+          bootstrap: {
+            sessionId: "mock-session",
+            region: "eu-west-1",
+            credentials: {
+              accessKeyId: "mock-access-key",
+              secretAccessKey: "mock-secret",
+              sessionToken: "mock-session-token",
+            },
+            returnToTelegramUrl: returnToTelegramFallbackUrl,
+          },
+        }
+      : token
+        ? { kind: "loading", message: "Preparing camera check..." }
+        : { kind: "invalid-token" },
   );
 
   useEffect(() => {
-    if (!token || bootstrapStartedRef.current) {
+    if (useMockDetector || !token || bootstrapStartedRef.current) {
       return;
     }
 
@@ -133,7 +160,7 @@ function App() {
           error instanceof Error ? error.message : "The liveness session could not be prepared.";
         setState({ kind: "detector-error", message });
       });
-  }, [token]);
+  }, [token, useMockDetector]);
 
   if (state.kind === "loading") {
     return (
@@ -195,26 +222,39 @@ function App() {
         <p className="eyebrow">Trempiada</p>
         <h1>Face verification</h1>
         <p className="subtitle">
-          Hold still, follow the motion prompt, and keep your face centered.
+          Use full screen brightness, keep your face centered, and follow the on-screen prompt.
         </p>
       </header>
       <div className="detector-card">
-        <FaceLivenessDetectorCore
-          sessionId={state.bootstrap.sessionId}
-          region={state.bootstrap.region}
-          config={{ credentialProvider }}
-          disableStartScreen
-          onAnalysisComplete={async () => {
-            setState({
-              kind: "complete",
-              returnToTelegramUrl: state.bootstrap.returnToTelegramUrl,
-            });
-          }}
-          onError={(error: any) => {
-            const message = error.error?.message ?? error.state ?? "Face detector failed.";
-            setState({ kind: "detector-error", message });
-          }}
-        />
+        {useMockDetector ? (
+          <MockDetector
+            onComplete={() => {
+              setState({
+                kind: "complete",
+                returnToTelegramUrl: state.bootstrap.returnToTelegramUrl,
+              });
+            }}
+            onError={(message) => {
+              setState({ kind: "detector-error", message });
+            }}
+          />
+        ) : (
+          <FaceLivenessDetectorCore
+            sessionId={state.bootstrap.sessionId}
+            region={state.bootstrap.region}
+            config={{ credentialProvider }}
+            onAnalysisComplete={async () => {
+              setState({
+                kind: "complete",
+                returnToTelegramUrl: state.bootstrap.returnToTelegramUrl,
+              });
+            }}
+            onError={(error: any) => {
+              const message = error.error?.message ?? error.state ?? "Face detector failed.";
+              setState({ kind: "detector-error", message });
+            }}
+          />
+        )}
       </div>
     </div>
   );
