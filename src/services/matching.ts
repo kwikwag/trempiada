@@ -217,7 +217,11 @@ export class MatchingService {
         from: { lat: request.pickupLat, lng: request.pickupLng },
         to: { lat: ride.originLat, lng: ride.originLng },
       });
-      if (pickupToOrigin > routeLength) {
+      const pickupToDest = haversineKm({
+        from: { lat: request.pickupLat, lng: request.pickupLng },
+        to: { lat: ride.destLat, lng: ride.destLng },
+      });
+      if (pickupToOrigin > routeLength && pickupToDest > routeLength) {
         rejected.roughDistance++;
         continue;
       }

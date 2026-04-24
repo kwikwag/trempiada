@@ -244,6 +244,29 @@ test("findDriversForRider returns match when all checks pass", async () => {
   assert.equal(result[0].ride.id, ride.id);
 });
 
+test("findDriversForRider keeps candidate whose pickup is near destination but far from origin", async () => {
+  // Pickup near Jerusalem (dest) but far from Tel Aviv (origin) — should not be rough-rejected.
+  // Driver departed 50 min ago so estimated pickup arrival is in the past + grace, which allows a wide window.
+  const ride = makeRide({
+    departureTime: new Date(Date.now() - 50 * 60 * 1000).toISOString(), // departed 50 min ago
+  });
+  const now = Date.now();
+  const req = makeRequest({
+    // Near Jerusalem — close to dest, far from origin
+    pickupLat: 31.78,
+    pickupLng: 35.22,
+    dropoffLat: 31.73,
+    dropoffLng: 35.28, // ~8 km from pickup, above MIN_RIDE_DISTANCE_KM
+    // Wide window: up to 2 hours from now
+    earliestDeparture: new Date(now - 60 * 60 * 1000).toISOString(),
+    latestDeparture: new Date(now + 60 * 60 * 1000).toISOString(),
+  });
+  const repo = makeRepo({ getOpenRides: () => [ride] });
+  const service = new MatchingService({ repo, routing: makeRouting() });
+  const result = await service.findDriversForRider(req);
+  assert.equal(result.length, 1);
+});
+
 // ---------------------------------------------------------------------------
 // createMatch
 // ---------------------------------------------------------------------------
