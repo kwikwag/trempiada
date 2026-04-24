@@ -39,7 +39,6 @@ if [ -n "$staged_files" ]; then
   done
 fi
 
+npx lint-staged --config .lintstagedrc.check.json
 npm run typecheck
-npm run format:check
-npm run lint
 npm test

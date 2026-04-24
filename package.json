@@ -19,7 +19,11 @@
     "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,integration,e2e}/**/*.test.ts'",
     "test:unit": "npm test",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "pre-commit": "npm run typecheck && npm run format && npm run lint"
+    "pre-commit": "lint-staged && npm run typecheck"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,json}": "prettier --write",
+    "*.{ts,tsx,js,mjs}": "eslint"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -34,6 +38,7 @@
     "@types/node": "^22.19.17",
     "eslint": "^10.2.0",
     "globals": "^17.4.0",
+    "lint-staged": "^15.5.1",
     "prettier": "^3.8.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",

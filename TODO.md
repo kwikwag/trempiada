@@ -8,6 +8,7 @@
 - [x] Status and conflict-state UX: `/status` shows matched rides, open ride offers, and open ride requests with next actions; `/cancel` cancels active matches, open offers, or open requests; switching driver/rider roles requires cancelling the current open activity first.
 - [ ] `src/bot/ui.ts` - `renderProfile` should add 'Show picture' (if set) or 'Add picture' (if unset). When showing picture, have a 'Change picture' button.
 - [ ] `src/bot/registration.ts` - `registerRegistrationHandlers` restart flow should just forget the gender, name and photo (upon confirmation) so that they may be picked up as a later flow (request/offer a ride)
+- [ ] User should be able to change their active car also in the My Profile screen
 
 ### ✅ Matching and correctness
 

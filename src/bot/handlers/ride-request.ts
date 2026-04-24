@@ -542,6 +542,7 @@ function formatRequestTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: "Asia/Jerusalem",
   });
 }
 
@@ -632,7 +633,9 @@ export async function startRideRequestFlow({
   sessions.setScene({ telegramId, scene: "request_pickup", data: {} });
   logger.info("request_flow_started", { telegramId, userId, source });
   await ctx.reply(
-    `Where do you need to be picked up?\n\n📍 Drop a pin or type an address.`,
+    "Where do you need to be picked up? You can:\n" +
+      "📍 Drop a pin (tap the attachment icon)\n" +
+      "✍️ Type an address or place name",
     backToMenuKeyboard(),
   );
 }
