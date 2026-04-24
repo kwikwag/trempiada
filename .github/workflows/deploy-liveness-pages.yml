@@ -34,6 +34,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Build liveness web app
         working-directory: web
@@ -46,11 +48,7 @@ jobs:
             exit 1
           fi
 
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+          npm ci --no-audit --no-fund
           npm run build
 
       - name: Assemble Pages artifact
@@ -58,17 +56,8 @@ jobs:
           rm -rf .pages
           mkdir -p .pages/liveness
           cp -R docs/. .pages/
-
-          for candidate in web/dist web/build web/out; do
-            if [ -d "$candidate" ]; then
-              cp -R "$candidate"/. .pages/liveness/
-              touch .pages/.nojekyll
-              exit 0
-            fi
-          done
-
-          echo "No supported web build output found. Expected one of web/dist, web/build, or web/out."
-          exit 1
+          cp -R web/dist/. .pages/liveness/
+          touch .pages/.nojekyll
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

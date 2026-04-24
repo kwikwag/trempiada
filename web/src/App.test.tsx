@@ -70,8 +70,12 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(screen.getByTestId("mock-detector")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /start video check/i })).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /start video check/i }));
+
+    expect(screen.getByTestId("mock-detector")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /simulate success/i }));
 
@@ -88,6 +92,7 @@ describe("App", () => {
 
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: /start video check/i }));
     await user.click(screen.getByRole("button", { name: /simulate landscape error/i }));
 
     expect(

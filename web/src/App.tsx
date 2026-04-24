@@ -4,8 +4,9 @@ import {
   FaceLivenessDetectorCore,
   type AwsCredentialProvider,
 } from "@aws-amplify/ui-react-liveness";
-import { clearStoredLivenessCameraId, probePreferredCameraDeviceId } from "./camera";
+import { clearStoredLivenessCameraId } from "./camera";
 import { LivenessErrorScreen } from "./LivenessErrorScreen";
+import { LivenessIntroScreen } from "./LivenessIntroScreen";
 import { MockDetector } from "./MockDetector";
 
 type AwsCredentials = {
@@ -126,8 +127,7 @@ function App() {
   const bootstrapStartedRef = useRef(false);
   const token = useMemo(getTokenFromQuery, []);
   const useMockDetector = useMemo(shouldUseMockDetector, []);
-  const [preferredDeviceId, setPreferredDeviceId] = useState<string | undefined>();
-  const [isPreparingCamera, setIsPreparingCamera] = useState(false);
+  const [hasStartedCheck, setHasStartedCheck] = useState(false);
   const [state, setState] = useState<AppState>(() =>
     useMockDetector
       ? {
@@ -166,53 +166,9 @@ function App() {
       });
   }, [token, useMockDetector]);
 
-  useEffect(() => {
-    if (useMockDetector || state.kind !== "ready") {
-      return;
-    }
-
-    let cancelled = false;
-
-    const prepareCamera = async () => {
-      setIsPreparingCamera(true);
-      clearStoredLivenessCameraId();
-
-      try {
-        const deviceId = await probePreferredCameraDeviceId();
-        if (!cancelled) {
-          setPreferredDeviceId(deviceId);
-        }
-      } catch {
-        if (!cancelled) {
-          setPreferredDeviceId(undefined);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsPreparingCamera(false);
-        }
-      }
-    };
-
-    void prepareCamera();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [state.kind, useMockDetector]);
-
   if (state.kind === "loading") {
     return (
       <StatusScreen title={state.message} detail="Contacting the verification service." busy />
-    );
-  }
-
-  if (state.kind === "ready" && !useMockDetector && isPreparingCamera) {
-    return (
-      <StatusScreen
-        title="Preparing front camera..."
-        detail="Checking the camera on this device before starting the liveness check."
-        busy
-      />
     );
   }
 
@@ -266,18 +222,24 @@ function App() {
   }
 
   const credentialProvider: AwsCredentialProvider = async () => state.bootstrap.credentials;
+  const startCheck = () => {
+    clearStoredLivenessCameraId();
+    setHasStartedCheck(true);
+  };
+  const returnToTelegram = () => {
+    if (closeTelegramWebApp()) {
+      return;
+    }
+
+    window.location.assign(returnToTelegramFallbackUrl);
+  };
+
+  if (state.kind === "ready" && !hasStartedCheck) {
+    return <LivenessIntroScreen onStart={startCheck} onReturnToTelegram={returnToTelegram} />;
+  }
 
   return (
-    <div className="app-shell detector-shell">
-      <header className="page-header">
-        <p className="eyebrow">Trempiada</p>
-        <div className="page-header__body">
-          <h1>Face verification</h1>
-          <p className="subtitle">
-            Use full screen brightness, keep your face centered, and follow the on-screen prompt.
-          </p>
-        </div>
-      </header>
+    <div className="app-shell detector-shell detector-shell--fullscreen">
       <div className="detector-card">
         {useMockDetector ? (
           <MockDetector
@@ -297,7 +259,6 @@ function App() {
             region={state.bootstrap.region}
             config={{
               credentialProvider,
-              ...(preferredDeviceId ? { deviceId: preferredDeviceId } : {}),
             }}
             displayText={{
               hintCenterFaceText: "Center your face",
@@ -307,6 +268,7 @@ function App() {
               recordingIndicatorText: "Verifying...",
               cancelLivenessCheckText: "Cancel",
             }}
+            disableStartScreen
             onAnalysisComplete={async () => {
               setState({
                 kind: "complete",
