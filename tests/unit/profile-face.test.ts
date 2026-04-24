@@ -37,17 +37,32 @@ function makeService(rekognitionResponse: unknown) {
 // Dummy buffer — fine for rejection tests where sharp is never reached
 const DUMMY = Buffer.alloc(1);
 
-test("validateAndCropPhoto — accepted: produces a non-empty JPEG buffer", async () => {
-  // Need a real image here because sharp runs the actual crop
-  const buf = await sharp({
-    create: { width: 10, height: 10, channels: 3, background: { r: 255, g: 255, b: 255 } },
+async function syntheticJpeg(width: number, height: number): Promise<Buffer> {
+  return sharp({
+    create: { width, height, channels: 3, background: { r: 255, g: 255, b: 255 } },
   })
     .jpeg()
     .toBuffer();
+}
+
+test("validateAndCropPhoto — accepted: produces a non-empty JPEG buffer", async () => {
+  const buf = await syntheticJpeg(100, 100);
   const service = makeService(okFaceResponse());
   const result = await service.validateAndCropPhoto(buf, "image/jpeg");
   assert.ok(result.ok, `Expected ok but got: ${!result.ok && result.userMessage}`);
   assert.equal(result.mimeType, "image/jpeg");
+  assert.ok(result.croppedBuffer.length > 0);
+});
+
+test("validateAndCropPhoto — face near edge: crop clamped to image bounds without error", async () => {
+  // Bounding box places the face in the bottom-right corner so the crop window must be clamped.
+  // Before the fix, clamp() returned a float which sharp rejected with "Expected integer".
+  const buf = await syntheticJpeg(100, 100);
+  const service = makeService(
+    okFaceResponse({ BoundingBox: { Left: 0.7, Top: 0.7, Width: 0.3, Height: 0.3 } }),
+  );
+  const result = await service.validateAndCropPhoto(buf, "image/jpeg");
+  assert.ok(result.ok, `Expected ok but got: ${!result.ok && result.userMessage}`);
   assert.ok(result.croppedBuffer.length > 0);
 });
 

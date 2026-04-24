@@ -200,8 +200,8 @@ async function cropFace({
   const faceCenterY = (box.Top + box.Height / 2) * height;
   const squareSize = Math.max(box.Width * width, box.Height * height) * paddingRatio;
 
-  const left = clamp(Math.round(faceCenterX - squareSize / 2), 0, Math.max(0, width - squareSize));
-  const top = clamp(Math.round(faceCenterY - squareSize / 2), 0, Math.max(0, height - squareSize));
+  const left = Math.round(clamp(faceCenterX - squareSize / 2, 0, Math.max(0, width - squareSize)));
+  const top = Math.round(clamp(faceCenterY - squareSize / 2, 0, Math.max(0, height - squareSize)));
   const extractSize = Math.max(1, Math.min(Math.round(squareSize), width - left, height - top));
 
   return sharp(imageBuffer, { failOn: "none" })
