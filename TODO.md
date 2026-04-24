@@ -10,7 +10,7 @@
 
 - [ ] `src/services/identity/profile-face.ts` - `validateAndCropPhoto` should be covered for zero-face, multi-face, occluded, low-brightness, low-sharpness, bad-pose, and successful crop cases using realistic image fixtures.
 - [ ] `src/bot/handlers/profile-photo.ts` - `tryTelegramProfilePhoto` / `processPhotoCandidate` should be covered for Telegram download failure, invalid-face rejection, cropped-photo send failure, and Telegram-profile-photo fallback to manual upload.
-- [ ] `infra/src/lambda/bootstrap/index.mjs` - bootstrap handler should be covered for valid token consume-once, expired token deletion, incomplete record rejection, and POST/OPTIONS method handling.
+- [ ] `web/src/App.tsx` - bootstrap flow should be covered for missing token, bootstrap failure, detector error, and complete-state return-to-Telegram fallback behavior.
 
 ### More info requried
 

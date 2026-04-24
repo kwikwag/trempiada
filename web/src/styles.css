@@ -1,0 +1,117 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(212, 238, 227, 0.9), rgba(212, 238, 227, 0) 40%),
+    linear-gradient(180deg, #f6fbf7 0%, #eef4ef 100%);
+  color: #17362b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.detector-shell {
+  gap: 20px;
+  align-content: center;
+}
+
+.page-header,
+.status-card,
+.detector-card {
+  width: min(100%, 480px);
+}
+
+.page-header {
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #4e816a;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 2.6rem);
+  line-height: 1.05;
+}
+
+.subtitle,
+.status-detail {
+  margin: 14px 0 0;
+  color: #406454;
+  line-height: 1.5;
+}
+
+.status-card,
+.detector-card {
+  border: 1px solid rgba(67, 111, 91, 0.16);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 24px 60px rgba(23, 54, 43, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.status-card {
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+}
+
+.detector-card {
+  overflow: hidden;
+}
+
+.primary-button {
+  border: 0;
+  border-radius: 999px;
+  background: #1f7a53;
+  color: #fff;
+  padding: 14px 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .status-card {
+    padding: 22px;
+  }
+}
