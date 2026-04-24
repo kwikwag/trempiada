@@ -106,9 +106,14 @@ export async function renderProfile(
   const verStats = formatTrustProfile({ user, verifications, forPublic: false });
 
   const verButtons = [];
-  verButtons.push([
-    Markup.button.callback(user.photoFileId ? "Change picture" : "Add picture", "profile_photo"),
-  ]);
+  if (user.photoFileId) {
+    verButtons.push([
+      Markup.button.callback("View picture", "view_profile_photo"),
+      Markup.button.callback("Change picture", "profile_photo"),
+    ]);
+  } else {
+    verButtons.push([Markup.button.callback("Add picture", "profile_photo")]);
+  }
   verButtons.push([Markup.button.callback("Run face liveness check", "profile_liveness")]);
   if (!verifiedTypes.has("facebook"))
     verButtons.push([Markup.button.callback("Connect Facebook", "verify_facebook")]);

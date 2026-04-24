@@ -372,6 +372,19 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     );
   });
 
+  bot.action("view_profile_photo", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    const user = repo.getUserById(session.userId);
+    if (!user?.photoFileId) {
+      await ctx.reply("You don't have a profile picture set.");
+      return;
+    }
+    await ctx.replyWithPhoto(user.photoFileId, { caption: "Your current profile picture" });
+  });
+
   bot.action("profile_photo", async (ctx) => {
     await ctx.answerCbQuery();
     const telegramId = ctx.from!.id;
