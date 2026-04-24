@@ -9,6 +9,7 @@ import {
   statusKeyboard,
   withBackToMenuButton,
 } from "../ui";
+import { formatTime as formatRequestTime } from "../../utils";
 import { ensureProfileComplete } from "./profile";
 
 const MATCHED_REQUEST_EDIT_BLOCK_MESSAGE =
@@ -534,15 +535,6 @@ async function saveRequestFromSession(
     requestId: request.id,
     candidateCount: candidates.length,
     notifiedCount: notified,
-  });
-}
-
-function formatRequestTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-IL", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Jerusalem",
   });
 }
 

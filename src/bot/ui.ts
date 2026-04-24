@@ -6,6 +6,7 @@ import {
   formatTrustProfile,
   formatRideSummary,
   formatCarInfo,
+  formatTime,
   type RideChangedField,
 } from "../utils";
 import type { Logger } from "../logger";
@@ -327,7 +328,7 @@ function formatOpenRideStatus(ride: Ride, carInfo?: string): string {
   return [
     "🚗 You are offering a ride.",
     `📍 ${ride.originLabel} → ${ride.destLabel}`,
-    `🕐 Leaving ${formatStatusTime(ride.departureTime)}`,
+    `🕐 Leaving ${formatTime(ride.departureTime)}`,
     ...(carInfo ? [carInfo] : []),
     `👥 ${ride.availableSeats} seat${ride.availableSeats === 1 ? "" : "s"} available`,
     "Next: review matching riders, modify this offer, or cancel it before requesting a ride.",
@@ -338,17 +339,9 @@ function formatOpenRequestStatus(request: RideRequest): string {
   return [
     "🛑 You are requesting a ride.",
     `📍 ${request.pickupLabel} → ${request.dropoffLabel}`,
-    `🕐 Window: ${formatStatusTime(request.earliestDeparture)}-${formatStatusTime(request.latestDeparture)}`,
+    `🕐 Window: ${formatTime(request.earliestDeparture)}-${formatTime(request.latestDeparture)}`,
     "Next: wait for a driver, or cancel this request before offering a ride.",
   ].join("\n");
-}
-
-function formatStatusTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-IL", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
 }
 
 export function cancellationKeyboard() {

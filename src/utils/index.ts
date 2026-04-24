@@ -102,6 +102,16 @@ export function formatRideSummary({
   ].join("\n");
 }
 
+// Israel-only: timezone and locale are hardcoded. Update if expanding to other markets.
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-IL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Jerusalem",
+  });
+}
+
 /** Format departure time for display */
 function formatDepartureTime(iso: string): string {
   const date = new Date(iso);
@@ -111,11 +121,7 @@ function formatDepartureTime(iso: string): string {
   if (diffMs < 5 * 60 * 1000) return "now";
   if (diffMs < 60 * 60 * 1000) return `in ~${Math.round(diffMs / 60000)} min`;
 
-  return date.toLocaleTimeString("en-IL", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  return formatTime(iso);
 }
 
 /** Format a match notification for the rider */
