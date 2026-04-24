@@ -1,6 +1,7 @@
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import { createBootstrapApi } from "./api";
+import { createBotIdentityPolicy } from "./bot-policy";
 import { createBrowserSessionRole } from "./browser-role";
 import { getLivenessConfig } from "./config";
 import { createTokenTable } from "./dynamodb";
@@ -13,6 +14,11 @@ const tokenTable = createTokenTable({
 const browserSessionRole = createBrowserSessionRole({
   resourcePrefix: config.resourcePrefix,
   trustedPrincipalArns: config.bootstrapRoleTrustedPrincipalArns,
+});
+const botIdentityPolicy = createBotIdentityPolicy({
+  resourcePrefix: config.resourcePrefix,
+  tokenTableArn: tokenTable.table.arn,
+  browserSessionRoleArn: browserSessionRole.role.arn,
 });
 const bootstrapLambda = createBootstrapLambda({
   resourcePrefix: config.resourcePrefix,
@@ -32,6 +38,8 @@ export const environment = config.environment;
 export const tokenTableName = tokenTable.table.name;
 export const tokenTableArn = tokenTable.table.arn;
 export const browserSessionRoleArn = browserSessionRole.role.arn;
+export const botPolicyArn = botIdentityPolicy.policy.arn;
+export const botPolicyDocument = botIdentityPolicy.document;
 export const bootstrapRoleArn = bootstrapLambda.role.arn;
 export const bootstrapFunctionName = bootstrapLambda.function.name;
 export const bootstrapApiId = bootstrapApi.api.id;

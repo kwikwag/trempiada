@@ -96,6 +96,7 @@ node dist/index.js
 ### 6. Deploy liveness Pages
 
 - Provision the Pulumi stack in `infra/` and copy the `bootstrapEndpointUrl` output into the GitHub repository variable `LIVENESS_BOOTSTRAP_URL`.
+- Attach the Pulumi `botPolicyArn` output to the AWS identity your bot uses, then copy the `botEnv` outputs into the bot runtime environment.
 - The GitHub Pages workflow builds the Vite app with base path `/trempiada/liveness/` and mounts it alongside the existing `docs/` site.
 
 ## Development Checks
