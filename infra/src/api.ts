@@ -15,6 +15,10 @@ export function createBootstrapApi(args: {
   bootstrapLambda: aws.lambda.Function;
   corsAllowOrigins: string[];
 }): BootstrapApi {
+  const callerIdentity = aws.getCallerIdentityOutput({});
+  const region = aws.getRegionOutput({});
+  const partition = aws.getPartitionOutput({});
+
   const api = new aws.apigatewayv2.Api("liveness-http-api", {
     name: `${args.resourcePrefix}-liveness`,
     protocolType: "HTTP",
@@ -50,7 +54,7 @@ export function createBootstrapApi(args: {
     action: "lambda:InvokeFunction",
     function: args.bootstrapLambda.name,
     principal: "apigateway.amazonaws.com",
-    sourceArn: pulumi.interpolate`${api.executionArn}/*/*`,
+    sourceArn: pulumi.interpolate`arn:${partition.partition}:execute-api:${region.name}:${callerIdentity.accountId}:${api.id}/*/*`,
   });
 
   return {

@@ -4,15 +4,13 @@ description: Minimal AWS infrastructure for the liveness verification flow
 main: index.ts
 config:
   aws:region:
-    default: eu-west-1
-  trempiada-liveness:environment:
+    value: us-east-1
+  environment:
+    type: string
     default: dev
-  trempiada-liveness:livenessPageBaseUrl:
+  livenessPageBaseUrl:
+    type: string
     description: Absolute public URL where the static liveness app is served, usually ending with /liveness/
-  trempiada-liveness:tokenTtlSeconds:
-    default: "900"
-  trempiada-liveness:corsAllowOrigins:
-    default:
-      - "*"
-  trempiada-liveness:bootstrapRoleTrustedPrincipalArns:
-    description: Optional IAM principal ARNs that may assume the browser Rekognition role; defaults to this AWS account root
+  tokenTtlSeconds:
+    type: integer
+    default: 180
