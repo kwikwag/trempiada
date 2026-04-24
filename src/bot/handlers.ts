@@ -5,6 +5,9 @@ import type { MatchingService } from "../services/matching";
 import type { RoutingService } from "../services/routing";
 import type { CarRecognitionService } from "../services/car-recognition";
 import type { GeocodingService } from "../services/geocoding";
+import type { TelegramPhotoService } from "../services/identity/telegram-photo";
+import type { ProfileFaceService } from "../services/identity/profile-face";
+import type { FaceLivenessService } from "../services/identity/liveness";
 import type { BotDeps } from "./deps";
 import type { NotifyArgs } from "./deps";
 import type { DevRepository } from "../db/dev-repository";
@@ -56,6 +59,9 @@ export interface RegisterHandlersArgs {
   routing: RoutingService;
   carRecognition: CarRecognitionService;
   geocoding: GeocodingService;
+  telegramPhotos: TelegramPhotoService;
+  profileFace: ProfileFaceService;
+  faceLiveness: FaceLivenessService;
   options?: HandlerOptions;
 }
 
@@ -102,6 +108,12 @@ async function replyUnexpectedInput(ctx: any, deps: BotDeps): Promise<void> {
     case "registration_photo":
       await ctx.reply(
         "Please send a clear selfie photo, or tap Back to menu.",
+        backToMenuKeyboard(),
+      );
+      return;
+    case "registration_photo_confirm":
+      await ctx.reply(
+        "Use the buttons on the cropped photo to keep it, try again, or skip for now.",
         backToMenuKeyboard(),
       );
       return;
@@ -240,6 +252,9 @@ export function registerHandlers({
   routing,
   carRecognition,
   geocoding,
+  telegramPhotos,
+  profileFace,
+  faceLiveness,
   options = {},
 }: RegisterHandlersArgs) {
   const { whitelist, dev, devIds, altCount = 2, logger = noopLogger } = options;
@@ -362,6 +377,9 @@ export function registerHandlers({
     routing,
     carRecognition,
     geocoding,
+    telegramPhotos,
+    profileFace,
+    faceLiveness,
     notify,
     logger,
   };
@@ -408,6 +426,7 @@ export function registerHandlers({
       { command: "ride", description: "Request a ride" },
       { command: "status", description: "My status and points" },
       { command: "profile", description: "My profile" },
+      { command: "liveness", description: "Run face liveness check" },
       { command: "cancel", description: "Cancel your current ride" },
       { command: "sos", description: "🚨 Emergency — call for help" },
       { command: "delete", description: "Delete my account" },

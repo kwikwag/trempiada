@@ -7,6 +7,7 @@ import type {
   Match,
   Rating,
   TrustVerification,
+  FaceLivenessVerification,
   Dispute,
   Gender,
   VerificationType,
@@ -42,6 +43,12 @@ interface VerificationRow {
   verified: number;
   shared_with_riders: number;
   external_ref: string | null;
+  verified_at: string;
+}
+
+interface FaceLivenessVerificationRow {
+  user_id: number;
+  profile_photo_file_id: string;
   verified_at: string;
 }
 
@@ -267,6 +274,7 @@ export class Repository {
     this.db
       .prepare("UPDATE users SET gender = NULL, photo_file_id = NULL WHERE id = ?")
       .run(userId);
+    this.clearFaceLivenessVerification(userId);
   }
 
   deactivateAllCarsForUser(userId: number): void {
@@ -346,6 +354,7 @@ export class Repository {
         .run(userId);
 
       this.db.prepare("DELETE FROM trust_verifications WHERE user_id = ?").run(userId);
+      this.db.prepare("DELETE FROM face_liveness_verifications WHERE user_id = ?").run(userId);
 
       this.db
         .prepare(
@@ -420,6 +429,48 @@ export class Repository {
       >("SELECT COUNT(*) as cnt FROM trust_verifications WHERE user_id = ?")
       .get(userId);
     return row?.cnt ?? 0;
+  }
+
+  setFaceLivenessVerification({
+    userId,
+    profilePhotoFileId,
+  }: {
+    userId: number;
+    profilePhotoFileId: string;
+  }): void {
+    this.db
+      .prepare(
+        `
+      INSERT INTO face_liveness_verifications (user_id, profile_photo_file_id)
+      VALUES (?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        profile_photo_file_id = excluded.profile_photo_file_id,
+        verified_at = datetime('now')
+    `,
+      )
+      .run(userId, profilePhotoFileId);
+  }
+
+  getFaceLivenessVerification(userId: number): FaceLivenessVerification | null {
+    const row = this.db
+      .prepare<
+        [number],
+        FaceLivenessVerificationRow
+      >("SELECT * FROM face_liveness_verifications WHERE user_id = ?")
+      .get(userId);
+    return row ? this.mapFaceLivenessVerification(row) : null;
+  }
+
+  hasCurrentFaceLivenessVerification(userId: number): boolean {
+    const user = this.getUserById(userId);
+    const verification = this.getFaceLivenessVerification(userId);
+    return Boolean(
+      user?.photoFileId && verification && verification.profilePhotoFileId === user.photoFileId,
+    );
+  }
+
+  clearFaceLivenessVerification(userId: number): void {
+    this.db.prepare("DELETE FROM face_liveness_verifications WHERE user_id = ?").run(userId);
   }
 
   private recalcTrustScore(userId: number): void {
@@ -824,6 +875,14 @@ export class Repository {
       verified: !!row.verified,
       sharedWithRiders: !!row.shared_with_riders,
       externalRef: row.external_ref,
+      verifiedAt: row.verified_at,
+    };
+  }
+
+  private mapFaceLivenessVerification(row: FaceLivenessVerificationRow): FaceLivenessVerification {
+    return {
+      userId: row.user_id,
+      profilePhotoFileId: row.profile_photo_file_id,
       verifiedAt: row.verified_at,
     };
   }

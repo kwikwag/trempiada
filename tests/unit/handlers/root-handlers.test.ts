@@ -15,6 +15,9 @@ function setupRootHandlers() {
     routing: deps.routing,
     carRecognition: deps.carRecognition,
     geocoding: deps.geocoding,
+    telegramPhotos: deps.telegramPhotos,
+    profileFace: deps.profileFace,
+    faceLiveness: deps.faceLiveness,
     options: { logger: deps.logger },
   });
 

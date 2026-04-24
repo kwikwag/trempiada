@@ -41,6 +41,12 @@ export interface TrustVerification {
   verifiedAt: string;
 }
 
+export interface FaceLivenessVerification {
+  userId: number;
+  profilePhotoFileId: string;
+  verifiedAt: string;
+}
+
 export interface Car {
   id: number;
   userId: number;
@@ -155,6 +161,7 @@ export type BotScene =
   | "idle"
   | "registration_gender"
   | "registration_photo"
+  | "registration_photo_confirm"
   | "registration_verification" // Must complete at least one verification
   | "registration_verification_choice"
   | "car_registration_photo"

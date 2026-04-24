@@ -1,0 +1,70 @@
+import { z } from "zod";
+
+const EnvSchema = z.object({
+  BOT_TOKEN: z.string().min(1),
+  GEMINI_API_KEY: z.string().min(1),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash-lite"),
+  DATABASE_PATH: z.string().default("./data/rides.db"),
+  LICENSE_DATABASE_PATH: z.string().default("./data/licenses.db"),
+  OSRM_URL: z.string().url().default("http://localhost:5000"),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
+  WHITELIST_IDS: z.string().optional(),
+  DEV_IDS: z.string().optional(),
+  ALT_COUNT: z.string().default("2"),
+  AWS_REGION: z.string().default("eu-west-1"),
+  AWS_LIVENESS_ROLE_ARN: z.string().optional(),
+  AWS_LIVENESS_BOOTSTRAP_TABLE: z.string().optional(),
+  AWS_LIVENESS_ROLE_SESSION_NAME: z.string().default("trempiada-liveness"),
+  AWS_LIVENESS_PAGES_URL: z.string().url().default("https://kwikwag.github.io/trempiada/liveness/"),
+  AWS_LIVENESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(180),
+  AWS_LIVENESS_POLL_INTERVAL_SECONDS: z.coerce.number().int().positive().default(15),
+  AWS_LIVENESS_MAX_POLL_SECONDS: z.coerce.number().int().positive().default(180),
+  AWS_LIVENESS_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(100).default(90),
+  AWS_FACE_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(100).default(90),
+  AWS_FACE_MIN_SHARPNESS: z.coerce.number().min(0).max(100).default(40),
+  AWS_FACE_MIN_BRIGHTNESS: z.coerce.number().min(0).max(100).default(30),
+  AWS_FACE_MAX_YAW: z.coerce.number().nonnegative().default(20),
+  AWS_FACE_MAX_PITCH: z.coerce.number().nonnegative().default(20),
+  AWS_FACE_MAX_ROLL: z.coerce.number().nonnegative().default(15),
+  AWS_FACE_OUTPUT_SIZE: z.coerce.number().int().positive().default(512),
+  AWS_FACE_CROP_PADDING_RATIO: z.coerce.number().positive().default(2.2),
+});
+
+export type AppConfig = ReturnType<typeof loadConfig>;
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
+  const parsed = EnvSchema.parse(env);
+  return {
+    botToken: parsed.BOT_TOKEN,
+    geminiApiKey: parsed.GEMINI_API_KEY,
+    geminiModel: parsed.GEMINI_MODEL,
+    databasePath: parsed.DATABASE_PATH,
+    licenseDatabasePath: parsed.LICENSE_DATABASE_PATH,
+    osrmUrl: parsed.OSRM_URL,
+    logLevel: parsed.LOG_LEVEL,
+    whitelistIds: parsed.WHITELIST_IDS,
+    devIds: parsed.DEV_IDS,
+    altCount: parseInt(parsed.ALT_COUNT, 10),
+    aws: {
+      region: parsed.AWS_REGION,
+      livenessRoleArn: parsed.AWS_LIVENESS_ROLE_ARN,
+      livenessBootstrapTable: parsed.AWS_LIVENESS_BOOTSTRAP_TABLE,
+      livenessRoleSessionName: parsed.AWS_LIVENESS_ROLE_SESSION_NAME,
+      livenessPagesUrl: parsed.AWS_LIVENESS_PAGES_URL.replace(/\/+$/, ""),
+      livenessTokenTtlSeconds: parsed.AWS_LIVENESS_TOKEN_TTL_SECONDS,
+      livenessPollIntervalSeconds: parsed.AWS_LIVENESS_POLL_INTERVAL_SECONDS,
+      livenessMaxPollSeconds: parsed.AWS_LIVENESS_MAX_POLL_SECONDS,
+      livenessConfidenceThreshold: parsed.AWS_LIVENESS_CONFIDENCE_THRESHOLD,
+      faceSimilarityThreshold: parsed.AWS_FACE_SIMILARITY_THRESHOLD,
+      face: {
+        minSharpness: parsed.AWS_FACE_MIN_SHARPNESS,
+        minBrightness: parsed.AWS_FACE_MIN_BRIGHTNESS,
+        maxYaw: parsed.AWS_FACE_MAX_YAW,
+        maxPitch: parsed.AWS_FACE_MAX_PITCH,
+        maxRoll: parsed.AWS_FACE_MAX_ROLL,
+        outputSize: parsed.AWS_FACE_OUTPUT_SIZE,
+        cropPaddingRatio: parsed.AWS_FACE_CROP_PADDING_RATIO,
+      },
+    },
+  };
+}

@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS trust_verifications (
   UNIQUE(user_id, type)
 );
 
+CREATE TABLE IF NOT EXISTS face_liveness_verifications (
+  user_id               INTEGER PRIMARY KEY REFERENCES users(id),
+  profile_photo_file_id TEXT NOT NULL,
+  verified_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS cars (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id        INTEGER NOT NULL REFERENCES users(id),
@@ -149,6 +155,8 @@ CREATE INDEX IF NOT EXISTS idx_matches_driver ON matches(driver_id);
 CREATE INDEX IF NOT EXISTS idx_matches_rider ON matches(rider_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_match ON ratings(match_id);
 CREATE INDEX IF NOT EXISTS idx_trust_user ON trust_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_face_liveness_photo
+  ON face_liveness_verifications(profile_photo_file_id);
 `;
 
 export function initDatabase(dbPath: string): Database.Database {

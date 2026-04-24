@@ -250,3 +250,24 @@ test("adjustPoints updates balance and getPointsBalance returns it", () => {
   repo.adjustPoints(user.id, -1.2);
   assert.equal(repo.getPointsBalance(user.id), 6.3);
 });
+
+test("face liveness verification tracks only the current accepted profile photo", () => {
+  const repo = makeRepo();
+  const user = repo.createUser(77_300, "Liveness User");
+  repo.updateUserProfile(user.id, { photoFileId: "photo-a" });
+
+  assert.equal(repo.hasCurrentFaceLivenessVerification(user.id), false);
+
+  repo.setFaceLivenessVerification({
+    userId: user.id,
+    profilePhotoFileId: "photo-a",
+  });
+  assert.equal(repo.hasCurrentFaceLivenessVerification(user.id), true);
+  assert.equal(repo.getFaceLivenessVerification(user.id)?.profilePhotoFileId, "photo-a");
+
+  repo.updateUserProfile(user.id, { photoFileId: "photo-b" });
+  assert.equal(repo.hasCurrentFaceLivenessVerification(user.id), false);
+
+  repo.clearFaceLivenessVerification(user.id);
+  assert.equal(repo.getFaceLivenessVerification(user.id), null);
+});

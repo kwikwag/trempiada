@@ -24,6 +24,7 @@ A Telegram-based ridesharing bot for Israel that connects drivers with hitchhike
 - **SQLite** (better-sqlite3) — Users, cars, rides, matches, ratings
 - **OSRM** — Self-hosted route matching for Israel road network
 - **Claude Vision API** — License plate + car detail extraction from photos
+- **AWS Rekognition** — Face validation, profile-photo cropping, and optional liveness checks
 
 ## Setup
 
@@ -33,6 +34,7 @@ A Telegram-based ridesharing bot for Israel that connects drivers with hitchhike
 - npm
 - A Telegram bot token (from @BotFather)
 - An Anthropic API key
+- AWS credentials with access to Rekognition, STS, and the liveness bootstrap table
 
 ### 2. Install
 
@@ -112,16 +114,17 @@ For emergency commits only, bypass it with `SKIP_PRECOMMIT=1 git commit ...`.
 
 ## Bot Commands
 
-| Command    | Description                                       |
-| ---------- | ------------------------------------------------- |
-| `/start`   | Register or welcome back                          |
-| `/drive`   | Offer a ride (triggers car reg if needed)         |
-| `/ride`    | Request a ride                                    |
-| `/cancel`  | Cancel active ride + reason                       |
-| `/profile` | View/manage your profile and verifications        |
-| `/restart` | Re-run profile onboarding (name/gender/photo/car) |
-| `/status`  | Check points balance and active ride              |
-| `/sos`     | Emergency — logs event, shows helplines           |
+| Command     | Description                                       |
+| ----------- | ------------------------------------------------- |
+| `/start`    | Register or welcome back                          |
+| `/drive`    | Offer a ride (triggers car reg if needed)         |
+| `/ride`     | Request a ride                                    |
+| `/cancel`   | Cancel active ride + reason                       |
+| `/profile`  | View/manage your profile and verifications        |
+| `/liveness` | Start an optional face liveness check             |
+| `/restart`  | Re-run profile onboarding (name/gender/photo/car) |
+| `/status`   | Check points balance and active ride              |
+| `/sos`      | Emergency — logs event, shows helplines           |
 
 ## Points Economy
 
@@ -144,6 +147,8 @@ For emergency commits only, bypass it with `SKIP_PRECOMMIT=1 git commit ...`.
 
 - Drivers must complete at least 1 identity verification
 - Verifications: phone (auto), photo, car, Facebook, LinkedIn, Google, email
+- Profile photos are optional, but any accepted photo is checked for one clear face and cropped before it is stored
+- Optional face liveness is started from Telegram, completed in a GitHub Pages web app, and checked against the accepted profile photo
 - Drivers choose which verifications are visible to riders
 - Riders see the driver's profile with verification badges + ratings
 - Driver gender is displayed to riders

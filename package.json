@@ -26,9 +26,14 @@
     "*.{ts,tsx,js,mjs}": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1035.0",
+    "@aws-sdk/client-rekognition": "^3.1035.0",
+    "@aws-sdk/client-sts": "^3.1035.0",
+    "@aws-sdk/lib-dynamodb": "^3.1035.0",
     "better-sqlite3": "^11.10.0",
     "dotenv": "^16.6.1",
     "pino": "^10.3.1",
+    "sharp": "^0.34.5",
     "telegraf": "^4.16.3",
     "zod": "^4.3.6"
   },

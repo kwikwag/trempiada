@@ -6,6 +6,12 @@
 - [ ] `src/bot/registration.ts` - `registerRegistrationHandlers` restart flow should just forget the gender, name and photo (upon confirmation) so that they may be picked up as a later flow (request/offer a ride)
 - [ ] User should be able to change their active car also in the My Profile screen
 
+### Test coverage
+
+- [ ] `src/services/identity/profile-face.ts` - `validateAndCropPhoto` should be covered for zero-face, multi-face, occluded, low-brightness, low-sharpness, bad-pose, and successful crop cases using realistic image fixtures.
+- [ ] `src/bot/handlers/profile-photo.ts` - `tryTelegramProfilePhoto` / `processPhotoCandidate` should be covered for Telegram download failure, invalid-face rejection, cropped-photo send failure, and Telegram-profile-photo fallback to manual upload.
+- [ ] `infra/src/lambda/bootstrap/index.mjs` - bootstrap handler should be covered for valid token consume-once, expired token deletion, incomplete record rejection, and POST/OPTIONS method handling.
+
 ### More info requried
 
 - [ ] Profile photo quality: send the photo to a face-crop service — if no face is detected, loop back and ask again. Show the cropped face and ask the user to confirm it's them, change the photo, or skip. If they skip, warn that having no photo reduces their trust score and makes drivers/riders less likely to accept them. Photo is stored as a Telegram file ID and only shared with the matched party (driver↔rider) when a match is confirmed, not before.

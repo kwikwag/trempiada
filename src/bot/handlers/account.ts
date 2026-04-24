@@ -4,6 +4,7 @@ import type { BotDeps } from "../deps";
 import type { Gender, VerificationType } from "../../types";
 import { POINTS } from "../../types";
 import { SOCIAL_VERIFICATION_TYPES } from "./restart-profile";
+import { beginProfilePhotoFlow } from "./profile-photo";
 import {
   backToMenuKeyboard,
   mainMenuKeyboard,
@@ -41,6 +42,89 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     }
   }
 
+  async function startLivenessCheck(ctx: Context, telegramId: number): Promise<void> {
+    const session = sessions.get(telegramId);
+    if (!session.userId) {
+      await replyNotRegistered(ctx);
+      return;
+    }
+
+    const user = repo.getUserById(session.userId);
+    if (!user?.photoFileId) {
+      await ctx.reply(
+        "Add a profile photo first, then I can run a liveness check against it.",
+        Markup.inlineKeyboard([[Markup.button.callback("Add picture", "profile_photo")]]),
+      );
+      return;
+    }
+
+    await ctx.reply("Creating your face liveness check...");
+
+    let attempt;
+    try {
+      attempt = await deps.faceLiveness.createAttempt({
+        userId: session.userId,
+        profilePhotoFileId: user.photoFileId,
+      });
+    } catch (err) {
+      logger.error("liveness_attempt_create_failed", { telegramId, userId: session.userId, err });
+      await ctx.reply("I couldn't start a liveness check right now. Please try again later.");
+      return;
+    }
+
+    await ctx.reply(
+      "Open the secure liveness page and follow the on-screen instructions. If anything goes wrong, you can just start a new check here.",
+      Markup.inlineKeyboard([[Markup.button.url("Open liveness check", attempt.url)]]),
+    );
+
+    void (async () => {
+      const currentUser = repo.getUserById(session.userId!);
+      if (!currentUser?.photoFileId) return;
+      const downloaded = await deps.telegramPhotos.downloadByFileId(currentUser.photoFileId);
+      if (!downloaded) {
+        await notify({
+          targetId: telegramId,
+          text: "I couldn't verify your current profile photo when the liveness check finished. Please try again.",
+        }).catch(() => undefined);
+        return;
+      }
+
+      try {
+        const result = await deps.faceLiveness.pollForResult({
+          sessionId: attempt.sessionId,
+          expectedProfilePhotoFileId: attempt.profilePhotoFileId,
+          currentProfilePhotoFileId: repo.getUserById(session.userId!)?.photoFileId ?? null,
+          profilePhotoBuffer: downloaded.buffer,
+        });
+        if (result.status === "succeeded") {
+          repo.setFaceLivenessVerification({
+            userId: session.userId!,
+            profilePhotoFileId: attempt.profilePhotoFileId,
+          });
+        }
+        await notify({
+          targetId: telegramId,
+          text: result.userMessage,
+          extra:
+            result.status === "succeeded"
+              ? undefined
+              : Markup.inlineKeyboard([
+                  [Markup.button.callback("Start a new liveness check", "profile_liveness")],
+                ]),
+        });
+      } catch (err) {
+        logger.error("liveness_poll_failed", { telegramId, userId: session.userId, err });
+        await notify({
+          targetId: telegramId,
+          text: "I couldn't finish checking that liveness session. Please try again.",
+          extra: Markup.inlineKeyboard([
+            [Markup.button.callback("Start a new liveness check", "profile_liveness")],
+          ]) as any,
+        }).catch(() => undefined);
+      }
+    })();
+  }
+
   // /start — entry point
   bot.start(async (ctx) => {
     const telegramId = ctx.from!.id;
@@ -63,17 +147,6 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     const telegramName = ctx.from!.first_name;
     const newUser = repo.createUser(telegramId, telegramName);
     repo.addVerification({ userId: newUser.id, type: "phone" });
-
-    try {
-      const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
-      if (profilePhotos.total_count > 0) {
-        const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
-        repo.updateUserProfile(newUser.id, { photoFileId: largest.file_id });
-        repo.addVerification({ userId: newUser.id, type: "photo" });
-      }
-    } catch {
-      // no profile photo available
-    }
 
     sessions.setUserId(telegramId, newUser.id);
     sessions.setScene({ telegramId, scene: "idle" });
@@ -160,6 +233,10 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     }
 
     await showStatus(ctx, { userId: session.userId, repo });
+  });
+
+  bot.command("liveness", async (ctx) => {
+    await startLivenessCheck(ctx, ctx.from!.id);
   });
 
   bot.command("cancel", async (ctx) => {
@@ -293,6 +370,26 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
       `Let's update your profile.\n\nWhat's your name?\n\nCurrent: *${user.firstName}*`,
       { parse_mode: "Markdown" },
     );
+  });
+
+  bot.action("profile_photo", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    await beginProfilePhotoFlow({
+      ctx,
+      telegramId,
+      deps,
+      prompt:
+        "Send a clear face photo. If you already have a Telegram profile picture, I'll try that first.",
+      extraData: { returnToProfile: true },
+    });
+  });
+
+  bot.action("profile_liveness", async (ctx) => {
+    await ctx.answerCbQuery();
+    await startLivenessCheck(ctx, ctx.from!.id);
   });
 
   bot.action("restart_apply", async (ctx) => {

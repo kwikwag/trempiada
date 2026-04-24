@@ -1,6 +1,7 @@
 import "dotenv/config";
 import path from "path";
 import { Telegraf } from "telegraf";
+import { RekognitionClient } from "@aws-sdk/client-rekognition";
 import { initDatabase } from "./db/migrate";
 import { Repository } from "./db/repository";
 import { DevRepository } from "./db/dev-repository";
@@ -10,9 +11,13 @@ import { MatchingService } from "./services/matching";
 import { CarRecognitionService } from "./services/car-recognition";
 import { LicenseLookupService } from "./services/license-lookup";
 import { GeocodingService } from "./services/geocoding";
+import { TelegramPhotoService } from "./services/identity/telegram-photo";
+import { ProfileFaceService } from "./services/identity/profile-face";
+import { FaceLivenessService, createAwsClients } from "./services/identity/liveness";
 import { registerHandlers } from "./bot/handlers";
 import { DevService } from "./bot/dev";
 import { createLogger } from "./logger";
+import { loadConfig } from "./config";
 
 function parseIdSet(env: string | undefined): Set<number> {
   if (!env) return new Set();
@@ -36,36 +41,30 @@ function logPath(dbPath: string): { file: string; absolute: boolean } {
 // ============================================================
 
 async function main() {
-  const logger = createLogger();
+  const config = loadConfig();
+  const logger = createLogger(config.logLevel);
 
   // --- Validate env ---
-  const BOT_TOKEN = process.env.BOT_TOKEN;
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  const DATABASE_PATH = process.env.DATABASE_PATH || "./data/rides.db";
-  const LICENSE_DATABASE_PATH = process.env.LICENSE_DATABASE_PATH || "./data/licenses.db";
-  const OSRM_URL = process.env.OSRM_URL || "http://localhost:5000";
-  const whitelist = parseIdSet(process.env.WHITELIST_IDS);
-  const devIds = parseIdSet(process.env.DEV_IDS);
-  const altCount = parseInt(process.env.ALT_COUNT ?? "2", 10);
-
-  if (!BOT_TOKEN) {
-    logger.error("missing_required_env", { variable: "BOT_TOKEN" });
-    process.exit(1);
-  }
-  if (!GEMINI_API_KEY) {
-    logger.error("missing_required_env", { variable: "GEMINI_API_KEY" });
-    process.exit(1);
-  }
+  const BOT_TOKEN = config.botToken;
+  const GEMINI_API_KEY = config.geminiApiKey;
+  const DATABASE_PATH = config.databasePath;
+  const LICENSE_DATABASE_PATH = config.licenseDatabasePath;
+  const OSRM_URL = config.osrmUrl;
+  const whitelist = parseIdSet(config.whitelistIds);
+  const devIds = parseIdSet(config.devIds);
+  const altCount = config.altCount;
 
   // --- Initialize services ---
   logger.info("app_starting", {
     database: logPath(DATABASE_PATH),
     licenseDatabase: logPath(LICENSE_DATABASE_PATH),
     osrmUrl: OSRM_URL,
-    geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash-lite",
+    geminiModel: config.geminiModel,
     whitelistEnabled: whitelist.size > 0,
     devModeEnabled: devIds.size > 0,
     altCount,
+    awsRegion: config.aws.region,
+    livenessPagesConfigured: Boolean(config.aws.livenessPagesUrl),
   });
   const db = initDatabase(DATABASE_PATH);
   logger.info("database_initialized", { database: logPath(DATABASE_PATH) });
@@ -79,10 +78,25 @@ async function main() {
     geminiApiKey: GEMINI_API_KEY,
     botToken: BOT_TOKEN,
     licenseLookup,
-    model: process.env.GEMINI_MODEL,
+    model: config.geminiModel,
     logger,
   });
   const geocoding = new GeocodingService({ logger });
+  const rekognition = new RekognitionClient({ region: config.aws.region });
+  const { dynamo, sts } = createAwsClients(config.aws.region);
+  const telegramPhotos = new TelegramPhotoService({ botToken: BOT_TOKEN, logger });
+  const profileFace = new ProfileFaceService({
+    rekognition,
+    logger,
+    thresholds: config.aws.face,
+  });
+  const faceLiveness = new FaceLivenessService({
+    rekognition,
+    sts,
+    dynamo,
+    logger,
+    config: config.aws,
+  });
   logger.info("services_initialized");
 
   // --- Initialize bot ---
@@ -100,6 +114,9 @@ async function main() {
     routing,
     carRecognition,
     geocoding,
+    telegramPhotos,
+    profileFace,
+    faceLiveness,
     options: {
       whitelist: whitelist.size > 0 ? whitelist : undefined,
       dev,

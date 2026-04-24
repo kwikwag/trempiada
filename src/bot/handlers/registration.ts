@@ -4,6 +4,8 @@ import type { BotDeps } from "../deps";
 import {
   backToMenuKeyboard,
   genderKeyboard,
+  profilePhotoPromptKeyboard,
+  renderProfile,
   showMainMenu,
   replyWithRideReview,
   withBackToMenuButton,
@@ -16,6 +18,7 @@ import {
   getSocialVerificationTypes,
   nextRestartProfileChoice,
 } from "./restart-profile";
+import { applyConfirmedPhoto, processPhotoCandidate } from "./profile-photo";
 
 type StartDriveFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
 type StartRideFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
@@ -115,7 +118,9 @@ export function registerRegistrationHandlers({
     const pendingAction = session.data.pendingAction as string | undefined;
     const user = repo.getUserById(session.userId!)!;
 
-    if (pendingAction === "drive") {
+    if (session.data.returnToProfile) {
+      await renderProfile(ctx, { userId: session.userId!, repo });
+    } else if (pendingAction === "drive") {
       await startDrivePostingFlow({ ctx, telegramId });
     } else if (pendingAction === "ride") {
       await startRideRequestFlow({ ctx, telegramId });
@@ -135,61 +140,20 @@ export function registerRegistrationHandlers({
       // Restart flow: store gender temporarily, don't write to DB yet
       if (session.data.restartMode) {
         sessions.updateData(telegramId, { newGender: g });
-        const updatedSession = sessions.get(telegramId);
-        // Try Telegram photo first
-        try {
-          const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
-          if (profilePhotos.total_count > 0) {
-            const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
-            sessions.updateData(telegramId, { newPhotoFileId: largest.file_id });
-            await ctx.editMessageText("Got it! 👍");
-            await showRestartConfirmation(ctx, sessions.get(telegramId));
-            return;
-          }
-        } catch {
-          // fall through to manual upload
-        }
-        sessions.setScene({ telegramId, scene: "registration_photo", data: updatedSession.data });
+        sessions.setScene({
+          telegramId,
+          scene: "registration_photo",
+          data: { ...sessions.get(telegramId).data, returnToProfile: false },
+        });
         await ctx.editMessageText(
-          "Got it.\n\nNow, send me a photo of yourself. " +
-            "This helps the other party recognize you.",
-          backToMenuKeyboard(),
+          "Got it.\n\nA profile photo is optional. Send one now, or skip it for now.",
+          profilePhotoPromptKeyboard(),
         );
         return;
       }
 
       repo.updateUserProfile(session.userId, { gender: g });
       logger.info("profile_gender_set", { telegramId, userId: session.userId, gender: g });
-
-      // Try Telegram profile photo if not yet set
-      const user = repo.getUserById(session.userId)!;
-      if (!user.photoFileId) {
-        try {
-          const profilePhotos = await ctx.telegram.getUserProfilePhotos(telegramId, 0, 1);
-          if (profilePhotos.total_count > 0) {
-            const largest = profilePhotos.photos[0][profilePhotos.photos[0].length - 1];
-            repo.updateUserProfile(session.userId, { photoFileId: largest.file_id });
-            const verifications = repo.getVerifications(session.userId);
-            if (!verifications.find((v) => v.type === "photo")) {
-              repo.addVerification({ userId: session.userId, type: "photo" });
-            }
-            logger.info("profile_photo_obtained_telegram", { telegramId, userId: session.userId });
-            await ctx.editMessageText("Got it! 👍");
-            await afterProfileComplete(ctx, telegramId);
-            return;
-          }
-        } catch {
-          // fall through to manual photo upload
-        }
-
-        sessions.setScene({ telegramId, scene: "registration_photo", data: session.data });
-        await ctx.editMessageText(
-          "Got it.\n\nNow, send me a photo of yourself. " +
-            "This helps the other party recognize you.",
-          backToMenuKeyboard(),
-        );
-        return;
-      }
 
       await ctx.editMessageText("Got it! 👍");
       await afterProfileComplete(ctx, telegramId);
@@ -357,30 +321,19 @@ export function registerRegistrationHandlers({
       const photos = msg.photo;
       const largest = photos[photos.length - 1];
       if (!session.userId) return true;
-
-      // Restart flow: store temporarily, show confirmation
-      if (session.data.restartMode) {
-        sessions.updateData(telegramId, { newPhotoFileId: largest.file_id });
-        await showRestartConfirmation(ctx, sessions.get(telegramId));
-        return true;
-      }
-
-      repo.updateUserProfile(session.userId, { photoFileId: largest.file_id });
-      const verifications = repo.getVerifications(session.userId);
-      if (!verifications.find((v) => v.type === "photo")) {
-        repo.addVerification({ userId: session.userId, type: "photo" });
-      }
-      sessions.setScene({ telegramId, scene: "idle" });
-      logger.info("profile_photo_uploaded", { telegramId, userId: session.userId });
-
-      await afterProfileComplete(ctx, telegramId);
+      await processPhotoCandidate({
+        ctx,
+        telegramId,
+        deps,
+        fileId: largest.file_id,
+      });
       return true;
     }
 
     if (session.scene === "registration_photo" && !("photo" in msg)) {
       await ctx.reply(
-        "Please send a photo of yourself (just a normal selfie), or tap Back to menu.",
-        backToMenuKeyboard(),
+        "Please send a clear photo of your face, or skip it for now.",
+        profilePhotoPromptKeyboard(),
       );
       return true;
     }
@@ -493,6 +446,82 @@ export function registerRegistrationHandlers({
 
     return false;
   }
+
+  bot.action("photo_confirm_use", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    const candidatePhotoFileId = session.data.candidatePhotoFileId as string | undefined;
+    if (!session.userId || !candidatePhotoFileId) return;
+
+    if (session.data.restartMode) {
+      sessions.updateData(telegramId, { newPhotoFileId: candidatePhotoFileId });
+      await (ctx as any).editMessageCaption("Photo saved for your updated profile. ✅");
+      await showRestartConfirmation(ctx, sessions.get(telegramId));
+      return;
+    }
+
+    applyConfirmedPhoto({
+      userId: session.userId,
+      photoFileId: candidatePhotoFileId,
+      deps,
+    });
+    sessions.setScene({ telegramId, scene: "idle" });
+    await (ctx as any).editMessageCaption("Photo saved. ✅");
+    logger.info("profile_photo_confirmed", { telegramId, userId: session.userId });
+    await afterProfileComplete(ctx, telegramId);
+  });
+
+  bot.action("photo_confirm_retry", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    sessions.setScene({
+      telegramId,
+      scene: "registration_photo",
+      data: { ...session.data, candidatePhotoFileId: undefined },
+    });
+    await (ctx as any).editMessageCaption(
+      "No problem. Send another face photo, or skip it for now.",
+      profilePhotoPromptKeyboard(),
+    );
+  });
+
+  bot.action("photo_skip", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+
+    sessions.setScene({
+      telegramId,
+      scene: "idle",
+      data: { ...session.data, candidatePhotoFileId: undefined, newPhotoFileId: undefined },
+    });
+
+    if (session.data.restartMode) {
+      if (session.scene === "registration_photo_confirm") {
+        await (ctx as any).editMessageCaption("Skipping the photo update for now.");
+      } else {
+        await ctx.editMessageText("Skipping the photo update for now.");
+      }
+      await showRestartConfirmation(ctx, sessions.get(telegramId));
+      return;
+    }
+
+    if (session.scene === "registration_photo_confirm") {
+      await (ctx as any).editMessageCaption(
+        "No problem. You can add a profile photo later from your profile.",
+      );
+    } else {
+      await ctx.editMessageText("No problem. You can add a profile photo later from your profile.");
+    }
+    if (session.data.returnToProfile) {
+      await renderProfile(ctx, { userId: session.userId, repo });
+      return;
+    }
+    await afterProfileComplete(ctx, telegramId);
+  });
 
   return { handleMessage };
 }

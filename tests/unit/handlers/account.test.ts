@@ -160,3 +160,39 @@ test("back_to_menu keeps open request active and returns user to status", async 
   assert.ok(buttons.includes("Modify request"));
   assert.ok(buttons.includes("Cancel request"));
 });
+
+test("profile_liveness asks for a profile photo before starting", async () => {
+  const bot = new FakeBot();
+  const { repo, sessions, deps } = createDeps();
+  const telegramId = 40_020;
+  const user = repo.createUser(telegramId, "No Photo");
+  sessions.setUserId(telegramId, user.id);
+  registerAccountHandlers(bot as any, deps);
+
+  const ctx = makeCtx({ telegramId });
+  await bot.actions.get("profile_liveness")!(ctx);
+
+  assert.match(ctx.replies.at(-1)?.text ?? "", /Add a profile photo first/i);
+  const buttons = inlineButtonTexts(ctx.replies.at(-1)?.extra);
+  assert.ok(buttons.includes("Add picture"));
+});
+
+test("profile_liveness starts a liveness session when a photo exists", async () => {
+  const bot = new FakeBot();
+  const { repo, sessions, deps } = createDeps();
+  const telegramId = 40_021;
+  const user = repo.createUser(telegramId, "Photo User");
+  repo.updateUserProfile(user.id, { photoFileId: "photo-file-id" });
+  sessions.setUserId(telegramId, user.id);
+  registerAccountHandlers(bot as any, deps);
+
+  const ctx = makeCtx({ telegramId });
+  await bot.actions.get("profile_liveness")!(ctx);
+
+  assert.match(ctx.replies[0]?.text ?? "", /Creating your face liveness check/i);
+  assert.match(ctx.replies[1]?.text ?? "", /Open the secure liveness page/i);
+  const buttons = inlineButtonTexts(ctx.replies[1]?.extra);
+  assert.ok(buttons.includes("Open liveness check"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(repo.hasCurrentFaceLivenessVerification(user.id), true);
+});

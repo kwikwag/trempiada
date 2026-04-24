@@ -75,10 +75,14 @@ export interface FakeCtx {
   updateType?: string;
   telegram?: any;
   replies: Array<{ text: string; extra: any }>;
+  photoReplies: Array<{ photo: any; extra: any }>;
   edits: Array<{ text: string; extra: any }>;
+  captionEdits: Array<{ caption: string; extra: any }>;
   answerCbQueryCalls: unknown[];
   reply: (text: string, extra?: any) => Promise<void>;
+  replyWithPhoto: (photo: any, extra?: any) => Promise<any>;
   editMessageText: (text: string, extra?: any) => Promise<void>;
+  editMessageCaption: (caption: string, extra?: any) => Promise<void>;
   answerCbQuery: (message?: unknown) => Promise<void>;
 }
 
@@ -94,13 +98,24 @@ export function makeCtx({ telegramId, message }: { telegramId: number; message?:
       },
     },
     replies: [],
+    photoReplies: [],
     edits: [],
+    captionEdits: [],
     answerCbQueryCalls: [],
     async reply(text: string, extra?: any) {
       this.replies.push({ text, extra });
     },
+    async replyWithPhoto(photo: any, extra?: any) {
+      this.photoReplies.push({ photo, extra });
+      return {
+        photo: [{ file_id: "generated-small" }, { file_id: "generated-photo-file" }],
+      };
+    },
     async editMessageText(text: string, extra?: any) {
       this.edits.push({ text, extra });
+    },
+    async editMessageCaption(caption: string, extra?: any) {
+      this.captionEdits.push({ caption, extra });
     },
     async answerCbQuery(message?: unknown) {
       this.answerCbQueryCalls.push(message);
@@ -120,6 +135,35 @@ export function createDeps(): { repo: Repository; sessions: SessionManager; deps
     routing: {} as any,
     carRecognition: {} as any,
     geocoding: {} as any,
+    telegramPhotos: {
+      downloadByFileId: async () => ({
+        filePath: "photo.jpg",
+        mimeType: "image/jpeg",
+        buffer: Buffer.from([0xff, 0xd8, 0xff]),
+      }),
+    } as any,
+    profileFace: {
+      validateAndCropPhoto: async () => ({
+        ok: true,
+        croppedBuffer: Buffer.from([0xff, 0xd8, 0xff]),
+        mimeType: "image/jpeg",
+      }),
+    } as any,
+    faceLiveness: {
+      createAttempt: async () => ({
+        sessionId: "session-1",
+        token: "token-1",
+        url: "https://example.com/liveness?token=token-1",
+        expiresAt: Math.floor(Date.now() / 1000) + 180,
+        profilePhotoFileId: "photo-file-id",
+      }),
+      pollForResult: async () => ({
+        status: "succeeded",
+        confidence: 99,
+        similarity: 99,
+        userMessage: "Face liveness check complete. You're verified for this photo.",
+      }),
+    } as any,
     notify: async () => undefined,
     logger: noopLogger,
   };

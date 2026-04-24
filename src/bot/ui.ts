@@ -59,6 +59,18 @@ export function verificationKeyboard() {
   ]);
 }
 
+export function profilePhotoPromptKeyboard() {
+  return withBackToMenuButton([[Markup.button.callback("Skip for now", "photo_skip")]]);
+}
+
+export function profilePhotoConfirmKeyboard() {
+  return withBackToMenuButton([
+    [Markup.button.callback("Use this photo", "photo_confirm_use")],
+    [Markup.button.callback("Try another photo", "photo_confirm_retry")],
+    [Markup.button.callback("Skip for now", "photo_skip")],
+  ]);
+}
+
 export async function replyNotRegistered(ctx: Context): Promise<void> {
   await ctx.reply(
     "TrempiadaBot connects drivers with hitchhikers in Israel.\n\nTap below to get started — it takes about 30 seconds.",
@@ -82,16 +94,22 @@ export async function renderProfile(
     ? { male: "Male", female: "Female", other: "Other" }[user.gender]
     : "Not set";
   const photoStatus = verifiedTypes.has("photo") ? "✅" : "❌";
+  const livenessStatus = repo.hasCurrentFaceLivenessVerification(userId) ? "✅" : "❌";
 
   const personalInfo = [
     `👤 *${user.firstName}*`,
     `⚧ Gender: ${genderLabel}`,
     `📸 Photo: ${photoStatus}`,
+    `🫥 Face liveness: ${livenessStatus}`,
   ].join("\n");
 
   const verStats = formatTrustProfile({ user, verifications, forPublic: false });
 
   const verButtons = [];
+  verButtons.push([
+    Markup.button.callback(user.photoFileId ? "Change picture" : "Add picture", "profile_photo"),
+  ]);
+  verButtons.push([Markup.button.callback("Run face liveness check", "profile_liveness")]);
   if (!verifiedTypes.has("facebook"))
     verButtons.push([Markup.button.callback("Connect Facebook", "verify_facebook")]);
   if (!verifiedTypes.has("linkedin"))

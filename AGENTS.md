@@ -10,6 +10,7 @@ Telegram-based ridesharing bot connecting drivers with hitchhikers in Israel.
 - **Database**: SQLite via better-sqlite3 (WAL mode, foreign keys ON)
 - **Routing**: OSRM (self-hosted with Israel OSM data)
 - **Car recognition**: Claude Vision API (Sonnet)
+- **Identity checks**: AWS Rekognition for accepted face photos + optional liveness
 
 ## Commands
 
@@ -46,7 +47,8 @@ src/
 ├── services/
 │   ├── routing.ts           # OSRM client (route calc, detour estimation)
 │   ├── matching.ts          # Core matching algorithm (driver↔rider)
-│   └── car-recognition.ts   # Claude Vision for license plate/car extraction
+│   ├── car-recognition.ts   # Claude Vision for license plate/car extraction
+│   └── identity/           # Telegram photo download, face validation/crop, liveness orchestration
 ├── logger.ts                # Pino-backed structured JSON logger (LOG_LEVEL-controlled)
 └── utils/
     └── index.ts             # Formatting, geo helpers, code generation
@@ -59,6 +61,8 @@ src/
 - **Matching algorithm**: Quick-filter candidates by haversine distance + time window, then OSRM detour calculation for accurate results. Ranked by least detour.
 - **Points economy**: Rides are free. Drivers earn 2 pts (rating ≥4) or 1 pt (rating <4). Riders earn 0.5/0.2. New users get 5 pts. No real money touches the system.
 - **Trust model**: Drivers must complete ≥1 verification. Each verification is stored in DB; drivers control which are _visible_ to riders vs just verified by the system.
+- **Profile photos**: A profile photo remains optional, but any accepted photo must pass Rekognition face checks (exactly one clear face), is cropped to a centered square portrait, and is only stored after the user confirms the cropped result.
+- **Liveness flow**: Optional face liveness starts from Telegram, opens a GitHub Pages app, uses a one-time DynamoDB bootstrap token plus pre-created STS credentials, and is finalized only when the bot polls Rekognition results and compares the returned reference face to the user's current accepted profile photo.
 - **Message relay**: During active rides, non-command messages forwarded between parties through the bot (no personal contact shared).
 - **Anti-gaming**: Min 5km ride distance, same-pair 24h cooldown, cancellation tracking, simultaneous rating reveal.
 - **Logging**: Server-side logs are structured JSON via Pino through `src/logger.ts`. Do not log raw Telegram message text, confirmation codes, phone numbers, license plates, Telegram file IDs, or precise personal location values. Log metadata, IDs, timings, state transitions, aggregate matching counters, and external service failures.
@@ -72,6 +76,10 @@ ANTHROPIC_API_KEY=   # For car photo analysis (required)
 DATABASE_PATH=       # Default: ./data/rides.db
 OSRM_URL=            # Default: http://localhost:5000
 LOG_LEVEL=           # debug | info | warn | error (default: info)
+AWS_REGION=          # Rekognition / STS / DynamoDB region
+AWS_LIVENESS_ROLE_ARN=
+AWS_LIVENESS_BOOTSTRAP_TABLE=
+AWS_LIVENESS_PAGES_URL=
 ```
 
 ## Conventions
@@ -101,7 +109,8 @@ LOG_LEVEL=           # debug | info | warn | error (default: info)
 - A **persistent SOS reply keyboard** is shown to both parties from match acceptance until ride end or cancellation — it is the only reply keyboard used and must be explicitly removed with `Markup.removeKeyboard()` on ride conclusion
 - `showMainMenu(ctx, name)` is the canonical way to return a user to idle state — prefer it over ad-hoc text prompts
 - A user can have only one active ride activity at a time: matched ride, open driver offer, or open rider request. Starting the opposite role should guide them to cancel/switch first, not create a second active activity.
-- **Deferred profile**: `/start` auto-creates an account using the Telegram display name and profile photo (if available). Gender and photo are collected just-in-time on first ride or drive action via `ensureProfileComplete` in `src/bot/handlers/profile.ts`. Car registration is collected just-in-time on first drive action. If a user has already done one action (e.g., requested a ride), their gender and photo are already set and are not asked again when they offer a drive.
+- **Deferred profile**: `/start` auto-creates an account using the Telegram display name. Gender is collected just-in-time on first ride or drive action via `ensureProfileComplete` in `src/bot/handlers/profile.ts`. Profile photos are optional and managed from the profile screen; any accepted photo is validated and cropped before storage. Car registration is collected just-in-time on first drive action.
+- **Deferred profile**: `/start` auto-creates an account using the Telegram display name. Gender is collected just-in-time on first ride or drive action via `ensureProfileComplete` in `src/bot/handlers/profile.ts`. Profile photos are optional and user-managed from the profile screen. Car registration is collected just-in-time on first drive action.
 - Open driver offers and rider requests can be modified only while still unmatched. Edit flows keep the current open activity active while the user chooses a field and reviews changes; saving replaces the previous open offer/request. Once matched, users must cancel the ride before changing route, time, seats, or request details.
 - `showStatus(ctx, userId, repo)` is the canonical state summary and should include the user's role, route, current state, and the obvious next action buttons.
 

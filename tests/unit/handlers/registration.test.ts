@@ -3,7 +3,7 @@ import test from "node:test";
 import { registerRegistrationHandlers } from "../../../src/bot/handlers/registration";
 import { FakeBot, createDeps, inlineButtonTexts, makeCtx } from "./helpers";
 
-test("restart profile review asks car and social keep/remove questions before final confirmation", async () => {
+test("restart profile review asks car and social keep/remove questions after photo confirmation", async () => {
   const bot = new FakeBot();
   const { repo, sessions, deps } = createDeps();
   const telegramId = 30_001;
@@ -46,8 +46,12 @@ test("restart profile review asks car and social keep/remove questions before fi
     message: { photo: [{ file_id: "small" }, { file_id: "new-photo" }] },
   });
   assert.equal(await handleMessage(photoCtx as any), true);
-  assert.match(photoCtx.replies.at(-1)?.text ?? "", /Remove your car from your profile\?/);
-  assert.deepEqual(inlineButtonTexts(photoCtx.replies.at(-1)?.extra).slice(0, 2), [
+  assert.equal(sessions.get(telegramId).scene, "registration_photo_confirm");
+
+  const confirmPhotoCtx = makeCtx({ telegramId });
+  await bot.actions.get("photo_confirm_use")!(confirmPhotoCtx);
+  assert.match(confirmPhotoCtx.replies.at(-1)?.text ?? "", /Remove your car from your profile\?/);
+  assert.deepEqual(inlineButtonTexts(confirmPhotoCtx.replies.at(-1)?.extra).slice(0, 2), [
     "Yes, remove it",
     "No, keep it",
   ]);
@@ -75,4 +79,36 @@ test("restart profile review asks car and social keep/remove questions before fi
     "✅ Confirm, update my profile",
     "✗ Cancel, keep current profile",
   ]);
+});
+
+test("registration photo upload validates, crops, and waits for confirmation", async () => {
+  const bot = new FakeBot();
+  const { repo, sessions, deps } = createDeps();
+  const telegramId = 30_002;
+  const user = repo.createUser(telegramId, "Dana");
+
+  const { handleMessage } = registerRegistrationHandlers({
+    bot: bot as any,
+    deps,
+    startDrivePostingFlow: async () => undefined,
+    startRideRequestFlow: async () => undefined,
+    createWazeDriveFromUrl: async () => false,
+  });
+
+  sessions.setUserId(telegramId, user.id);
+  sessions.setScene({ telegramId, scene: "registration_photo", data: {} });
+
+  const photoCtx = makeCtx({
+    telegramId,
+    message: { photo: [{ file_id: "small" }, { file_id: "new-photo" }] },
+  });
+  assert.equal(await handleMessage(photoCtx as any), true);
+  assert.equal(sessions.get(telegramId).scene, "registration_photo_confirm");
+  assert.equal(sessions.get(telegramId).data.candidatePhotoFileId, "generated-photo-file");
+  assert.match(photoCtx.photoReplies.at(-1)?.extra?.caption ?? "", /cropped that photo/i);
+
+  const confirmCtx = makeCtx({ telegramId });
+  await bot.actions.get("photo_confirm_use")!(confirmCtx);
+  assert.equal(repo.getUserById(user.id)?.photoFileId, "generated-photo-file");
+  assert.ok(repo.getVerifications(user.id).some((v) => v.type === "photo"));
 });
