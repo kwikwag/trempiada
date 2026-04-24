@@ -4,6 +4,7 @@ import {
   FaceLivenessDetectorCore,
   type AwsCredentialProvider,
 } from "@aws-amplify/ui-react-liveness";
+import { clearStoredLivenessCameraId, probePreferredCameraDeviceId } from "./camera";
 import { LivenessErrorScreen } from "./LivenessErrorScreen";
 import { MockDetector } from "./MockDetector";
 
@@ -125,6 +126,8 @@ function App() {
   const bootstrapStartedRef = useRef(false);
   const token = useMemo(getTokenFromQuery, []);
   const useMockDetector = useMemo(shouldUseMockDetector, []);
+  const [preferredDeviceId, setPreferredDeviceId] = useState<string | undefined>();
+  const [isPreparingCamera, setIsPreparingCamera] = useState(false);
   const [state, setState] = useState<AppState>(() =>
     useMockDetector
       ? {
@@ -163,9 +166,53 @@ function App() {
       });
   }, [token, useMockDetector]);
 
+  useEffect(() => {
+    if (useMockDetector || state.kind !== "ready") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const prepareCamera = async () => {
+      setIsPreparingCamera(true);
+      clearStoredLivenessCameraId();
+
+      try {
+        const deviceId = await probePreferredCameraDeviceId();
+        if (!cancelled) {
+          setPreferredDeviceId(deviceId);
+        }
+      } catch {
+        if (!cancelled) {
+          setPreferredDeviceId(undefined);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPreparingCamera(false);
+        }
+      }
+    };
+
+    void prepareCamera();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.kind, useMockDetector]);
+
   if (state.kind === "loading") {
     return (
       <StatusScreen title={state.message} detail="Contacting the verification service." busy />
+    );
+  }
+
+  if (state.kind === "ready" && !useMockDetector && isPreparingCamera) {
+    return (
+      <StatusScreen
+        title="Preparing front camera..."
+        detail="Checking the camera on this device before starting the liveness check."
+        busy
+      />
     );
   }
 
@@ -248,7 +295,10 @@ function App() {
           <FaceLivenessDetectorCore
             sessionId={state.bootstrap.sessionId}
             region={state.bootstrap.region}
-            config={{ credentialProvider }}
+            config={{
+              credentialProvider,
+              ...(preferredDeviceId ? { deviceId: preferredDeviceId } : {}),
+            }}
             displayText={{
               hintCenterFaceText: "Center your face",
               hintMoveFaceFrontOfCameraText: "Move into better light and face the camera directly",

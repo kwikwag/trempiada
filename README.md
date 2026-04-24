@@ -99,6 +99,25 @@ node dist/index.js
 - Attach the Pulumi `botPolicyArn` output to the AWS identity your bot uses, then copy the `botEnv` outputs into the bot runtime environment.
 - The GitHub Pages workflow builds the Vite app with base path `/trempiada/liveness/` and mounts it alongside the existing `docs/` site.
 
+### 7. Local liveness link for Vite dev
+
+To create a real one-time liveness token and open it against your local Vite app:
+
+```bash
+npm run liveness:local-link
+```
+
+Optional flags:
+
+```bash
+npm run liveness:local-link -- --origin http://localhost:5173/ --user-id 123 --photo-file-id test-photo
+```
+
+The script prints JSON with:
+- `localUrl` for the local Vite dev server
+- `pagesUrl` for the GitHub Pages deployment
+- the generated `token`, `sessionId`, and expiry time
+
 ## Development Checks
 
 `npm install` configures the repository to use the checked-in Git hooks under `.githooks/`.

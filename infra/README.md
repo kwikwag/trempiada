@@ -33,6 +33,10 @@ Optional overrides:
 ```bash
 pulumi config set tokenTtlSeconds 180
 pulumi config set --path 'corsAllowOrigins[0]' https://kwikwag.github.io
+# optionally, for local testing
+pulumi config set --path 'corsAllowOrigins[1]' http://localhost:5173
+pulumi config set --path 'corsAllowOrigins[2]' http://127.0.0.1:5173
+pulumi up
 ```
 
 The generated stack file is `Pulumi.<stack>.yaml`. In that file, project-scoped keys are namespaced as `trempiada-liveness:<key>`, while provider keys keep their provider namespace such as `aws:region`.

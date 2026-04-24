@@ -12,6 +12,7 @@
 - [ ] `src/bot/handlers/profile-photo.ts` - `tryTelegramProfilePhoto` / `processPhotoCandidate` should be covered for Telegram download failure, invalid-face rejection, cropped-photo send failure, and Telegram-profile-photo fallback to manual upload.
 - [ ] `web/src/App.tsx` - the return-to-Telegram `location.assign` fallback path should be covered without relying on a real browser navigation primitive.
 - [ ] `web/src/MockDetector.tsx` - the live-preview path should be covered for successful `getUserMedia`, rejected `getUserMedia`, and cleanup that stops camera tracks on unmount.
+- [ ] `scripts/create_local_liveness_link.ts` - argument parsing should be covered for default values, explicit `--origin` / `--user-id` / `--photo-file-id`, and `--help`.
 - [ ] `infra/src/bot-policy.ts` - `createBotIdentityPolicy` should be covered for the exact Rekognition, STS AssumeRole, and DynamoDB PutItem statements emitted for the bot policy document.
 
 ### More info requried
