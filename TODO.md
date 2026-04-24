@@ -11,6 +11,7 @@
 - [ ] `src/services/identity/profile-face.ts` - `validateAndCropPhoto` should be covered for zero-face, multi-face, occluded, low-brightness, low-sharpness, bad-pose, and successful crop cases using realistic image fixtures.
 - [ ] `src/bot/handlers/profile-photo.ts` - `tryTelegramProfilePhoto` / `processPhotoCandidate` should be covered for Telegram download failure, invalid-face rejection, cropped-photo send failure, and Telegram-profile-photo fallback to manual upload.
 - [ ] `web/src/App.tsx` - the return-to-Telegram `location.assign` fallback path should be covered without relying on a real browser navigation primitive.
+- [ ] `web/src/MockDetector.tsx` - the live-preview path should be covered for successful `getUserMedia`, rejected `getUserMedia`, and cleanup that stops camera tracks on unmount.
 - [ ] `infra/src/bot-policy.ts` - `createBotIdentityPolicy` should be covered for the exact Rekognition, STS AssumeRole, and DynamoDB PutItem statements emitted for the bot policy document.
 
 ### More info requried

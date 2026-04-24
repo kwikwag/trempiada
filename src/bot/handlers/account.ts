@@ -73,8 +73,11 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
     }
 
     await ctx.reply(
-      "Open the secure liveness page and follow the on-screen instructions. If anything goes wrong, you can just start a new check here.",
-      Markup.inlineKeyboard([[Markup.button.url("Open liveness check", attempt.url)]]),
+      "This is a one-time liveness link. It stays valid for the next 3 minutes, so open it now on this phone and complete the check in one go.\n\nIf it expires or anything goes wrong, come back here and tap Restart liveness check.",
+      Markup.inlineKeyboard([
+        [Markup.button.url("Open liveness check", attempt.url)],
+        [Markup.button.callback("Restart liveness check", "profile_liveness")],
+      ]),
     );
 
     void (async () => {
@@ -101,6 +104,14 @@ export function registerAccountHandlers(bot: Telegraf, deps: BotDeps): void {
             userId: session.userId!,
             profilePhotoFileId: attempt.profilePhotoFileId,
           });
+        }
+        if (result.status === "expired") {
+          logger.info("liveness_attempt_expired", {
+            telegramId,
+            userId: session.userId,
+            sessionId: attempt.sessionId,
+          });
+          return;
         }
         await notify({
           targetId: telegramId,

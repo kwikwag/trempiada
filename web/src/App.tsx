@@ -4,6 +4,7 @@ import {
   FaceLivenessDetectorCore,
   type AwsCredentialProvider,
 } from "@aws-amplify/ui-react-liveness";
+import { LivenessErrorScreen } from "./LivenessErrorScreen";
 import { MockDetector } from "./MockDetector";
 
 type AwsCredentials = {
@@ -31,7 +32,7 @@ type AppState =
   | { kind: "loading"; message: string }
   | { kind: "invalid-token" }
   | { kind: "ready"; bootstrap: BootstrapResponse }
-  | { kind: "detector-error"; message: string }
+  | { kind: "detector-error"; message: string; state?: string }
   | { kind: "complete"; returnToTelegramUrl?: string };
 
 const returnToTelegramFallbackUrl = "https://t.me/trempiadabot";
@@ -158,7 +159,7 @@ function App() {
       .catch((error: unknown) => {
         const message =
           error instanceof Error ? error.message : "The liveness session could not be prepared.";
-        setState({ kind: "detector-error", message });
+        setState({ kind: "detector-error", message, state: "BOOTSTRAP_ERROR" });
       });
   }, [token, useMockDetector]);
 
@@ -179,14 +180,17 @@ function App() {
 
   if (state.kind === "detector-error") {
     return (
-      <StatusScreen
-        title="Verification could not continue"
-        detail={state.message}
-        actionLabel="Return to Telegram"
-        onAction={() => {
-          if (!closeTelegramWebApp()) {
-            window.location.reload();
+      <LivenessErrorScreen
+        error={{ state: state.state, message: state.message }}
+        onRetryHere={() => {
+          window.location.reload();
+        }}
+        onReturnToTelegram={() => {
+          if (closeTelegramWebApp()) {
+            return;
           }
+
+          window.location.assign(returnToTelegramFallbackUrl);
         }}
       />
     );
@@ -220,10 +224,12 @@ function App() {
     <div className="app-shell detector-shell">
       <header className="page-header">
         <p className="eyebrow">Trempiada</p>
-        <h1>Face verification</h1>
-        <p className="subtitle">
-          Use full screen brightness, keep your face centered, and follow the on-screen prompt.
-        </p>
+        <div className="page-header__body">
+          <h1>Face verification</h1>
+          <p className="subtitle">
+            Use full screen brightness, keep your face centered, and follow the on-screen prompt.
+          </p>
+        </div>
       </header>
       <div className="detector-card">
         {useMockDetector ? (
@@ -243,6 +249,14 @@ function App() {
             sessionId={state.bootstrap.sessionId}
             region={state.bootstrap.region}
             config={{ credentialProvider }}
+            displayText={{
+              hintCenterFaceText: "Center your face",
+              hintMoveFaceFrontOfCameraText: "Move into better light and face the camera directly",
+              hintCanNotIdentifyText:
+                "We can't see your whole face clearly enough yet. Remove anything covering it and try again.",
+              recordingIndicatorText: "Verifying...",
+              cancelLivenessCheckText: "Cancel",
+            }}
             onAnalysisComplete={async () => {
               setState({
                 kind: "complete",
@@ -251,7 +265,7 @@ function App() {
             }}
             onError={(error: any) => {
               const message = error.error?.message ?? error.state ?? "Face detector failed.";
-              setState({ kind: "detector-error", message });
+              setState({ kind: "detector-error", message, state: error.state });
             }}
           />
         )}

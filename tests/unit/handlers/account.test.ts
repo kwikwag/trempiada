@@ -190,9 +190,38 @@ test("profile_liveness starts a liveness session when a photo exists", async () 
   await bot.actions.get("profile_liveness")!(ctx);
 
   assert.match(ctx.replies[0]?.text ?? "", /Creating your face liveness check/i);
-  assert.match(ctx.replies[1]?.text ?? "", /Open the secure liveness page/i);
+  assert.match(ctx.replies[1]?.text ?? "", /one-time liveness link/i);
+  assert.match(ctx.replies[1]?.text ?? "", /valid for the next 3 minutes/i);
   const buttons = inlineButtonTexts(ctx.replies[1]?.extra);
   assert.ok(buttons.includes("Open liveness check"));
+  assert.ok(buttons.includes("Restart liveness check"));
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(repo.hasCurrentFaceLivenessVerification(user.id), true);
+});
+
+test("profile_liveness does not send a separate notify when the link expires", async () => {
+  const bot = new FakeBot();
+  const { repo, sessions, deps } = createDeps();
+  const telegramId = 40_022;
+  const user = repo.createUser(telegramId, "Expiring User");
+  repo.updateUserProfile(user.id, { photoFileId: "photo-file-id" });
+  sessions.setUserId(telegramId, user.id);
+  const notifyCalls: Array<{ targetId: number; text: string }> = [];
+  deps.faceLiveness = {
+    ...deps.faceLiveness,
+    pollForResult: async () => ({
+      status: "expired" as const,
+      userMessage: "That liveness link expired. Please start a new check.",
+    }),
+  } as any;
+  deps.notify = async ({ targetId, text }: { targetId: number; text: string }) => {
+    notifyCalls.push({ targetId, text });
+  };
+  registerAccountHandlers(bot as any, deps);
+
+  const ctx = makeCtx({ telegramId });
+  await bot.actions.get("profile_liveness")!(ctx);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(notifyCalls.length, 0);
 });
