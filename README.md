@@ -93,6 +93,11 @@ npm run build
 node dist/index.js
 ```
 
+### 6. Deploy liveness Pages
+
+- Provision the Pulumi stack in `infra/` and copy the `bootstrapEndpointUrl` output into the GitHub repository variable `LIVENESS_BOOTSTRAP_URL`.
+- The GitHub Pages workflow builds the Vite app with base path `/trempiada/liveness/` and mounts it alongside the existing `docs/` site.
+
 ## Development Checks
 
 `npm install` configures the repository to use the checked-in Git hooks under `.githooks/`.

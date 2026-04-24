@@ -1,0 +1,88 @@
+name: Deploy liveness Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-liveness-pages.yml"
+      - "docs/**"
+      - "web/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy-liveness-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build liveness web app
+        working-directory: web
+        env:
+          VITE_BASE_URL: /trempiada/liveness/
+          VITE_LIVENESS_BOOTSTRAP_URL: ${{ vars.LIVENESS_BOOTSTRAP_URL }}
+        run: |
+          if [ -z "$VITE_LIVENESS_BOOTSTRAP_URL" ]; then
+            echo "Missing repository variable LIVENESS_BOOTSTRAP_URL. Set it from the Pulumi bootstrapEndpointUrl output."
+            exit 1
+          fi
+
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+      - name: Assemble Pages artifact
+        run: |
+          rm -rf .pages
+          mkdir -p .pages/liveness
+          cp -R docs/. .pages/
+
+          for candidate in web/dist web/build web/out; do
+            if [ -d "$candidate" ]; then
+              cp -R "$candidate"/. .pages/liveness/
+              touch .pages/.nojekyll
+              exit 0
+            fi
+          done
+
+          echo "No supported web build output found. Expected one of web/dist, web/build, or web/out."
+          exit 1
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

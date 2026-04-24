@@ -1,0 +1,19 @@
+{
+  "name": "trempiada-liveness-infra",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pulumi infrastructure for the liveness feature",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pulumi/aws": "^6.78.0",
+    "@pulumi/pulumi": "^3.157.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.9.3"
+  }
+}
