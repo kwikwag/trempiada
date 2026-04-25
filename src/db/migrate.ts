@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   first_name            TEXT NOT NULL,
   gender                TEXT CHECK(gender IN ('male', 'female', 'other')),
   photo_file_id         TEXT,
+  photo_nudged_at       TEXT,
   phone                 TEXT,
   points_balance        REAL NOT NULL DEFAULT 5.0,
   trust_score           REAL NOT NULL DEFAULT 0,
@@ -174,6 +175,13 @@ export function initDatabase(dbPath: string): Database.Database {
 
   // Run schema
   db.exec(SCHEMA);
+
+  // Additive column migrations for existing databases
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN photo_nudged_at TEXT");
+  } catch {
+    // Column already exists — safe to ignore
+  }
 
   return db;
 }

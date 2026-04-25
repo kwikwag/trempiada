@@ -18,7 +18,7 @@ import {
   getSocialVerificationTypes,
   nextRestartProfileChoice,
 } from "./restart-profile";
-import { applyConfirmedPhoto, processPhotoCandidate } from "./profile-photo";
+import { applyConfirmedPhoto, beginProfilePhotoFlow, processPhotoCandidate } from "./profile-photo";
 
 type StartDriveFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
 type StartRideFlow = (args: { ctx: Context; telegramId: number }) => Promise<void>;
@@ -446,6 +446,32 @@ export function registerRegistrationHandlers({
 
     return false;
   }
+
+  bot.action("photo_nudge_add", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    const pendingAction = session.data.pendingAction as string | undefined;
+    await ctx.editMessageText("Let's add a profile photo. Send a clear selfie.");
+    await beginProfilePhotoFlow({
+      ctx,
+      telegramId,
+      deps,
+      prompt: "Send a clear selfie so other users can recognise you.",
+      extraData: { pendingAction },
+    });
+  });
+
+  bot.action("photo_nudge_skip", async (ctx) => {
+    await ctx.answerCbQuery();
+    const telegramId = ctx.from!.id;
+    const session = sessions.get(telegramId);
+    if (!session.userId) return;
+    repo.setPhotoNudgedAt(session.userId);
+    await ctx.editMessageText("No problem. You can add one later from your profile.");
+    await afterProfileComplete(ctx, telegramId);
+  });
 
   bot.action("photo_confirm_use", async (ctx) => {
     await ctx.answerCbQuery();

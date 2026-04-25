@@ -17,6 +17,7 @@ export interface User {
   firstName: string;
   gender: Gender | null;
   photoFileId: string | null; // Telegram file ID
+  photoNudgedAt: string | null;
   phone: string | null;
   pointsBalance: number;
   trustScore: number; // Computed from verifications + ratings

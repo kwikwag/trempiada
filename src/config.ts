@@ -27,7 +27,7 @@ const EnvSchema = z.object({
   AWS_FACE_MAX_PITCH: z.coerce.number().nonnegative().default(20),
   AWS_FACE_MAX_ROLL: z.coerce.number().nonnegative().default(15),
   AWS_FACE_OUTPUT_SIZE: z.coerce.number().int().positive().default(512),
-  AWS_FACE_CROP_PADDING_RATIO: z.coerce.number().positive().default(2.2),
+  AWS_FACE_CROP_PADDING_RATIO: z.coerce.number().nonnegative().default(0.15),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;

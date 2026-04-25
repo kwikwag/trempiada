@@ -28,7 +28,7 @@ const DEFAULT_THRESHOLDS = {
   maxPitch: 20,
   maxRoll: 15,
   outputSize: 512,
-  cropPaddingRatio: 2.2,
+  cropPaddingRatio: 0.15,
 };
 
 function makeService() {

@@ -8,6 +8,18 @@ import {
 import type { Logger } from "../../logger";
 import { noopLogger } from "../../logger";
 
+export interface CropRegion {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface Size {
+  width: number;
+  height: number;
+}
+
 export interface ProfileFaceServiceOptions {
   rekognition: Pick<RekognitionClient, "send">;
   logger?: Logger;
@@ -36,8 +48,9 @@ export class ProfileFaceService {
   async validateAndCropPhoto(
     imageBuffer: Buffer,
     mimeType: string,
+    cachedFaces?: FaceDetail[],
   ): Promise<ProfilePhotoValidationResult> {
-    const faces = await this.detectFaces(imageBuffer);
+    const faces = cachedFaces ?? (await this.detectFaces(imageBuffer));
     if (!faces) {
       return invalidPhoto(
         "We couldn't check that photo just now. Please try again in a moment.",
@@ -65,16 +78,28 @@ export class ProfileFaceService {
     }
 
     try {
-      const crop = await cropFace({
-        imageBuffer,
+      const image = sharp(imageBuffer, { failOn: "none" });
+      const meta = await image.metadata();
+      const imgWidth = meta.width ?? this.thresholds.outputSize;
+      const imgHeight = meta.height ?? this.thresholds.outputSize;
+      const cropRegion = getFaceCrop({
         face,
-        outputSize: this.thresholds.outputSize,
+        width: imgWidth,
+        height: imgHeight,
         paddingRatio: this.thresholds.cropPaddingRatio,
+      });
+      const outputSize = this.thresholds.outputSize;
+      const crop = await applyCrop({
+        image: imageBuffer,
+        cropRegion,
+        outputSize: { width: outputSize, height: outputSize },
       });
       return {
         ok: true,
         croppedBuffer: crop,
         mimeType: mimeType === "image/png" ? "image/png" : "image/jpeg",
+        face,
+        cropRegion,
       };
     } catch (err) {
       this.logger.error("profile_photo_crop_failed", { err });
@@ -106,6 +131,8 @@ export type ProfilePhotoValidationResult =
       ok: true;
       croppedBuffer: Buffer;
       mimeType: string;
+      face: FaceDetail;
+      cropRegion: CropRegion;
     }
   | {
       ok: false;
@@ -171,51 +198,145 @@ function classifyFace(
   return null;
 }
 
-async function cropFace({
-  imageBuffer,
+export function getFaceCrop({
   face,
-  outputSize,
-  paddingRatio,
+  width,
+  height,
+  paddingRatio = 0.15,
 }: {
-  imageBuffer: Buffer;
   face: FaceDetail;
-  outputSize: number;
-  paddingRatio: number;
-}): Promise<Buffer> {
-  const image = sharp(imageBuffer, { failOn: "none" });
-  const metadata = await image.metadata();
-  const width = metadata.width ?? outputSize;
-  const height = metadata.height ?? outputSize;
-  const box = face.BoundingBox;
-  if (
-    box?.Left === undefined ||
-    box.Top === undefined ||
-    box.Width === undefined ||
-    box.Height === undefined
-  ) {
-    throw new Error("Missing face bounding box");
+  width: number;
+  height: number;
+  paddingRatio?: number;
+}): CropRegion {
+  const bbox = face.BoundingBox;
+  if (!bbox || bbox.Left == null || bbox.Top == null || bbox.Width == null || bbox.Height == null) {
+    throw new Error("FaceDetail is missing a complete BoundingBox");
   }
 
-  const faceCenterX = (box.Left + box.Width / 2) * width;
-  const faceCenterY = (box.Top + box.Height / 2) * height;
-  const squareSize = Math.max(box.Width * width, box.Height * height) * paddingRatio;
+  // Estimate where the top of the hair is.
+  //
+  // Rekognition's BoundingBox.Top sits roughly at the brow/forehead, not the
+  // hairline. We use landmarks to measure the face's internal scale (eye line
+  // to chin) and extrapolate upward by a similar amount to cover typical hair.
+  //
+  // If landmarks are unavailable, we fall back to extending the bbox top by a
+  // fraction of the bbox height.
+  let hairTop = bbox.Top - bbox.Height * 0.25;
 
-  const left = Math.round(clamp(faceCenterX - squareSize / 2, 0, Math.max(0, width - squareSize)));
-  const top = Math.round(clamp(faceCenterY - squareSize / 2, 0, Math.max(0, height - squareSize)));
-  const extractSize = Math.max(1, Math.min(Math.round(squareSize), width - left, height - top));
+  const landmarks = new Map((face.Landmarks ?? []).map((l) => [l.Type, l]));
 
-  return sharp(imageBuffer, { failOn: "none" })
-    .extract({
-      left,
-      top,
-      width: extractSize,
-      height: extractSize,
-    })
-    .resize(outputSize, outputSize, { fit: "cover" })
-    .jpeg({ quality: 90 })
-    .toBuffer();
+  const eyeLeft = landmarks.get("eyeLeft");
+  const eyeRight = landmarks.get("eyeRight");
+  const chinBottom = landmarks.get("chinBottom");
+
+  if (eyeLeft?.Y != null && eyeRight?.Y != null && chinBottom?.Y != null) {
+    const eyeLineY = (eyeLeft.Y + eyeRight.Y) / 2;
+    const eyeToChin = chinBottom.Y - eyeLineY;
+    if (eyeToChin > 0) {
+      // Hair above the brow is typically a bit more than the brow-to-chin
+      // distance for full hairstyles; 1.1x is a safe default.
+      hairTop = Math.min(hairTop, eyeLineY - eyeToChin * 1.1);
+    }
+  }
+  if (hairTop > bbox.Top) {
+    hairTop = bbox.Top;
+  }
+
+  const headHeight = bbox.Height + (bbox.Top - hairTop);
+
+  const cx = (bbox.Left + bbox.Width / 2) * width;
+  const cy = (hairTop + headHeight / 2) * height;
+  const ww = bbox.Width * width;
+  const hh = headHeight * height;
+  const size = Math.max(ww, hh) * (1 + 2 * paddingRatio);
+
+  const crop: CropRegion = {
+    left: Math.round(cx - size / 2),
+    top: Math.round(cy - size / 2),
+    width: Math.round(size),
+    height: Math.round(size),
+  };
+
+  return crop;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
+export async function applyCrop({
+  image,
+  cropRegion,
+  outputSize,
+  quality = 90,
+}: {
+  image: Buffer;
+  cropRegion: CropRegion;
+  outputSize: Size;
+  quality?: number;
+}): Promise<Buffer> {
+  const { left, top, width, height } = cropRegion;
+
+  if (width <= 0 || height <= 0) {
+    throw new Error(
+      `Invalid crop region: width and height must be positive (got ${width}x${height})`,
+    );
+  }
+
+  // Apply EXIF rotation up front so width/height reflect the visual orientation.
+  const rotated = await sharp(image).rotate().toBuffer();
+  const { width: srcWidth, height: srcHeight } = await sharp(rotated).metadata();
+  if (srcWidth == null || srcHeight == null) {
+    throw new Error("Could not determine source image dimensions");
+  }
+
+  // Compute the in-bounds intersection of the crop region with the source.
+  const interLeft = Math.max(left, 0);
+  const interTop = Math.max(top, 0);
+  const interRight = Math.min(left + width, srcWidth);
+  const interBottom = Math.min(top + height, srcHeight);
+
+  const interWidth = interRight - interLeft;
+  const interHeight = interBottom - interTop;
+
+  let canvasBuffer: Buffer;
+
+  if (interWidth <= 0 || interHeight <= 0) {
+    // Crop region lies entirely outside the source — just a black rectangle.
+    canvasBuffer = await sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 0, g: 0, b: 0 },
+      },
+    })
+      .png()
+      .toBuffer();
+  } else {
+    // Extract the in-bounds portion, then extend it with black on each side
+    // to fill the requested crop region.
+    const padLeft = interLeft - left;
+    const padTop = interTop - top;
+    const padRight = width - interWidth - padLeft;
+    const padBottom = height - interHeight - padTop;
+
+    canvasBuffer = await sharp(rotated)
+      .extract({
+        left: interLeft,
+        top: interTop,
+        width: interWidth,
+        height: interHeight,
+      })
+      .extend({
+        top: padTop,
+        bottom: padBottom,
+        left: padLeft,
+        right: padRight,
+        background: { r: 0, g: 0, b: 0 },
+      })
+      .toBuffer();
+  }
+
+  return sharp(canvasBuffer)
+    .resize(outputSize.width, outputSize.height, { fit: "fill" })
+    .jpeg({ quality })
+    .toBuffer();
 }

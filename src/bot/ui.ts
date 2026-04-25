@@ -93,14 +93,16 @@ export async function renderProfile(
   const genderLabel = user.gender
     ? { male: "Male", female: "Female", other: "Other" }[user.gender]
     : "Not set";
-  const photoStatus = verifiedTypes.has("photo") ? "✅" : "❌";
-  const livenessStatus = repo.hasCurrentFaceLivenessVerification(userId) ? "✅" : "❌";
+  const photoLabel = !user.photoFileId
+    ? "Missing"
+    : repo.hasCurrentFaceLivenessVerification(userId)
+      ? "Verified ✅"
+      : "Unverified";
 
   const personalInfo = [
     `👤 *${user.firstName}*`,
     `⚧ Gender: ${genderLabel}`,
-    `📸 Photo: ${photoStatus}`,
-    `🫥 Face liveness: ${livenessStatus}`,
+    `📸 Photo: ${photoLabel}`,
   ].join("\n");
 
   const verStats = formatTrustProfile({ user, verifications, forPublic: false });

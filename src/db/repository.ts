@@ -25,6 +25,7 @@ interface UserRow {
   first_name: string;
   gender: Gender | null;
   photo_file_id: string | null;
+  photo_nudged_at: string | null;
   phone: string | null;
   points_balance: number;
   trust_score: number;
@@ -268,6 +269,10 @@ export class Repository {
     values.push(userId);
 
     this.db.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  }
+
+  setPhotoNudgedAt(userId: number): void {
+    this.db.prepare("UPDATE users SET photo_nudged_at = datetime('now') WHERE id = ?").run(userId);
   }
 
   clearUserProfileData(userId: number): void {
@@ -855,6 +860,7 @@ export class Repository {
       firstName: row.first_name,
       gender: row.gender,
       photoFileId: row.photo_file_id,
+      photoNudgedAt: row.photo_nudged_at,
       phone: row.phone,
       pointsBalance: row.points_balance,
       trustScore: row.trust_score,
