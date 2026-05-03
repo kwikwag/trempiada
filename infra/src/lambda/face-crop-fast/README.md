@@ -2,7 +2,12 @@
 
 Small Rust library for fast portrait extraction from a mobile photo.
 
-Runtime target: CPU only. The face detector runs through `tract-onnx`, and the U²-Net segmenter runs through ONNX Runtime CPU for broader ONNX operator compatibility.
+Runtime target: CPU only. The face detector and U²-Net segmenter run through exactly one inference backend selected at build time:
+
+- `backend-ort`: ONNX Runtime for both models. Preferred for x86_64 Lambda builds.
+- `backend-tract`: `tract-onnx` for both models. Preferred for arm64 builds and fully static builds.
+
+The backends are mutually exclusive and there is no default backend. Build commands must pass exactly one of `--features backend-ort` or `--features backend-tract`.
 
 It uses:
 
@@ -52,7 +57,7 @@ There is a tiny local CLI in `src/bin/run.rs`. It expects an input image and out
 From this directory:
 
 ```bash
-cargo run --bin run -- \
+cargo run --bin run --features backend-tract -- \
   /absolute/path/to/input.jpg \
   /absolute/path/to/output.png
 ```
@@ -60,7 +65,7 @@ cargo run --bin run -- \
 To add a watermark:
 
 ```bash
-cargo run --bin run -- \
+cargo run --bin run --features backend-tract -- \
   /absolute/path/to/input.jpg \
   /absolute/path/to/output.png \
   --watermark /absolute/path/to/watermark.png
@@ -69,13 +74,43 @@ cargo run --bin run -- \
 To switch to `u2net_human_seg`:
 
 ```bash
-cargo run --bin run -- \
+cargo run --bin run --features backend-tract -- \
   /absolute/path/to/input.jpg \
   /absolute/path/to/output.png \
   --u2net /absolute/path/to/u2net_human_seg.onnx
 ```
 
 The command writes a composited PNG and prints the detected face confidence plus the crop rectangle it used.
+
+## Build Backends
+
+Use `backend-tract` for pure-Rust local development:
+
+```bash
+cargo run --bin run --features backend-tract -- \
+  /absolute/path/to/input.jpg \
+  /absolute/path/to/output.png
+```
+
+For an ORT-only build:
+
+```bash
+cargo build --release --bin lambda --features backend-ort
+```
+
+The Lambda ZIP helper defaults to ORT on x86_64 and tract on arm64:
+
+```bash
+bash scripts/build-lambda-zip.sh x86_64
+bash scripts/build-lambda-zip.sh arm64
+```
+
+Override the backend explicitly with a second argument or `FACE_CROP_BACKEND`:
+
+```bash
+bash scripts/build-lambda-zip.sh x86_64 tract
+FACE_CROP_BACKEND=ort bash scripts/build-lambda-zip.sh arm64
+```
 
 ## Download Models
 

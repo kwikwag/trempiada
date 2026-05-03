@@ -1,18 +1,25 @@
 use std::path::Path;
-#[cfg(all(target_arch = "x86_64", feature = "ort-backend"))]
+#[cfg(all(feature = "backend-ort", not(feature = "backend-tract")))]
 use std::sync::Mutex;
 
 use image::codecs::png::PngEncoder;
 use image::imageops::{self, FilterType};
 use image::{DynamicImage, GrayImage, ImageBuffer, ImageEncoder, Luma, Rgba, RgbaImage};
 use thiserror::Error;
+#[cfg(all(feature = "backend-tract", not(feature = "backend-ort")))]
 use tract_onnx::prelude::*;
 
+#[cfg(all(feature = "backend-ort", feature = "backend-tract"))]
+compile_error!("features `backend-ort` and `backend-tract` are mutually exclusive");
+#[cfg(not(any(feature = "backend-ort", feature = "backend-tract")))]
+compile_error!("enable exactly one inference backend feature: `backend-ort` or `backend-tract`");
+
+#[cfg(all(feature = "backend-ort", not(feature = "backend-tract")))]
+type ModelRunner = OrtRunner;
+#[cfg(all(feature = "backend-tract", not(feature = "backend-ort")))]
 type TractRunner = SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel>;
-#[cfg(all(target_arch = "x86_64", feature = "ort-backend"))]
-type SegmenterRunner = OrtSegmenter;
-#[cfg(not(all(target_arch = "x86_64", feature = "ort-backend")))]
-type SegmenterRunner = TractRunner;
+#[cfg(all(feature = "backend-tract", not(feature = "backend-ort")))]
+type ModelRunner = TractRunner;
 
 const DEFAULT_OUTPUT_WIDTH: u32 = 768;
 const DEFAULT_OUTPUT_HEIGHT: u32 = 960;
@@ -144,14 +151,19 @@ pub struct FaceCropRequest<'a> {
 }
 
 pub struct FaceCropper {
-    face_detector: TractRunner,
-    segmenter: SegmenterRunner,
+    face_detector: ModelRunner,
+    segmenter: ModelRunner,
     config: FaceCropperConfig,
 }
 
-#[cfg(all(target_arch = "x86_64", feature = "ort-backend"))]
-struct OrtSegmenter {
+#[cfg(all(feature = "backend-ort", not(feature = "backend-tract")))]
+struct OrtRunner {
     session: Mutex<ort::session::Session>,
+}
+
+struct ModelOutput {
+    shape: Vec<usize>,
+    data: Vec<f32>,
 }
 
 #[derive(Debug, Error)]
@@ -177,7 +189,7 @@ pub enum FaceCropError {
 }
 
 impl FaceCropper {
-    /// Creates a CPU-only cropper backed by tract-onnx.
+    /// Creates a CPU-only cropper backed by the selected Cargo backend feature.
     /// Defaults to the human-specific U^2-Net segmenter preset.
     pub fn new(
         face_detector_model_path: &Path,
@@ -315,10 +327,14 @@ impl FaceCropper {
         );
 
         let input = face_detector_tensor(&resized);
-        let outputs = self
-            .face_detector
-            .run(tvec!(input.into()))
-            .map_err(|err| FaceCropError::FaceDetectorModel(err.to_string()))?;
+        let outputs = run_model(
+            &self.face_detector,
+            input,
+            3,
+            self.config.face_input_height,
+            self.config.face_input_width,
+        )
+        .map_err(|err| FaceCropError::FaceDetectorModel(err.to_string()))?;
 
         let detections = parse_ultraface_detections(
             &outputs,
@@ -365,6 +381,7 @@ impl FaceCropper {
     }
 }
 
+#[cfg(all(feature = "backend-tract", not(feature = "backend-ort")))]
 fn load_model(
     model_path: &Path,
     input_width: usize,
@@ -394,112 +411,144 @@ fn load_model(
         })
 }
 
-#[cfg(not(all(target_arch = "x86_64", feature = "ort-backend")))]
-fn load_segmenter_model(
+#[cfg(all(feature = "backend-ort", not(feature = "backend-tract")))]
+fn load_model(
     model_path: &Path,
-    model_name: &str,
-    input_size: usize,
-) -> Result<SegmenterRunner, FaceCropError> {
-    // TODO: tract currently mis-evaluates Resize sizes in the U2Net model on
-    // this path. Keep it for portability, but prefer the ORT backend on x86_64.
-    tract_onnx::onnx()
-        .model_for_path(model_path)
-        .and_then(|model| {
-            model
-                .with_input_fact(
-                    0,
-                    InferenceFact::dt_shape(
-                        f32::datum_type(),
-                        tvec!(1i64, 3i64, input_size as i64, input_size as i64),
-                    ),
-                )?
-                .into_optimized()?
-                .into_runnable()
-        })
-        .map_err(|err| FaceCropError::SegmenterModel(format!("{model_name}: {err}")))
-}
-
-#[cfg(all(target_arch = "x86_64", feature = "ort-backend"))]
-fn load_segmenter_model(
-    model_path: &Path,
-    model_name: &str,
-    _input_size: usize,
-) -> Result<SegmenterRunner, FaceCropError> {
+    _input_width: usize,
+    _input_height: usize,
+    kind: &str,
+) -> Result<ModelRunner, FaceCropError> {
     use ort::session::{builder::GraphOptimizationLevel, Session};
 
     let session = Session::builder()
-        .map_err(|err| FaceCropError::SegmenterModel(format!("{model_name}: {err}")))?
+        .map_err(|err| model_error(kind, err.to_string()))?
         .with_optimization_level(GraphOptimizationLevel::Level3)
-        .map_err(|err| FaceCropError::SegmenterModel(format!("{model_name}: {err}")))?
+        .map_err(|err| model_error(kind, err.to_string()))?
         .commit_from_file(model_path)
-        .map_err(|err| FaceCropError::SegmenterModel(format!("{model_name}: {err}")))?;
+        .map_err(|err| model_error(kind, err.to_string()))?;
 
-    Ok(OrtSegmenter {
+    Ok(OrtRunner {
         session: Mutex::new(session),
     })
 }
 
-#[cfg(not(all(target_arch = "x86_64", feature = "ort-backend")))]
-fn run_segmenter(
-    segmenter: &SegmenterRunner,
-    input: Vec<f32>,
+fn load_segmenter_model(
+    model_path: &Path,
+    model_name: &str,
     input_size: usize,
-) -> Result<GrayImage, FaceCropError> {
+) -> Result<ModelRunner, FaceCropError> {
+    // TODO: tract currently mis-evaluates Resize sizes in the U2Net model on
+    // this path. Keep it for portability, but prefer the ORT backend on x86_64.
+    load_model(model_path, input_size, input_size, model_name)
+}
+
+#[cfg(all(feature = "backend-ort", not(feature = "backend-tract")))]
+fn model_error(kind: &str, message: String) -> FaceCropError {
+    if kind == "face detector" {
+        FaceCropError::FaceDetectorModel(message)
+    } else {
+        FaceCropError::SegmenterModel(format!("{kind}: {message}"))
+    }
+}
+
+#[cfg(all(feature = "backend-tract", not(feature = "backend-ort")))]
+fn run_model(
+    runner: &ModelRunner,
+    input: Vec<f32>,
+    channels: usize,
+    input_height: usize,
+    input_width: usize,
+) -> Result<Vec<ModelOutput>, FaceCropError> {
     let tensor: Tensor =
-        tract_ndarray::Array4::from_shape_vec((1, 3, input_size, input_size), input)
+        tract_ndarray::Array4::from_shape_vec((1, channels, input_height, input_width), input)
             .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?
             .into();
-    let outputs = segmenter
+    let outputs = runner
         .run(tvec!(tensor.into()))
         .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
 
-    extract_tract_mask(&outputs[0])
+    outputs
+        .iter()
+        .map(|output| {
+            let view = output
+                .to_array_view::<f32>()
+                .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
+            Ok(ModelOutput {
+                shape: view.shape().to_vec(),
+                data: view.iter().copied().collect(),
+            })
+        })
+        .collect()
 }
 
-#[cfg(all(target_arch = "x86_64", feature = "ort-backend"))]
-fn run_segmenter(
-    segmenter: &SegmenterRunner,
+#[cfg(all(feature = "backend-ort", not(feature = "backend-tract")))]
+fn run_model(
+    runner: &ModelRunner,
     input: Vec<f32>,
-    input_size: usize,
-) -> Result<GrayImage, FaceCropError> {
+    channels: usize,
+    input_height: usize,
+    input_width: usize,
+) -> Result<Vec<ModelOutput>, FaceCropError> {
     use ort::value::Tensor as OrtTensor;
 
     let tensor = OrtTensor::from_array((
-        [1_usize, 3, input_size, input_size],
+        [1_usize, channels, input_height, input_width],
         input.into_boxed_slice(),
     ))
     .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
-    let mut session = segmenter.session.lock().map_err(|err| {
+    let mut session = runner.session.lock().map_err(|err| {
         FaceCropError::SegmenterModel(format!("ort session lock poisoned: {err}"))
     })?;
     let outputs = session
         .run(ort::inputs![tensor])
         .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
-    let (shape, data) = outputs[0]
-        .try_extract_tensor::<f32>()
-        .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
-    let shape = shape
-        .iter()
-        .map(|dimension| {
-            usize::try_from(*dimension).map_err(|_| FaceCropError::UnexpectedTensorShape)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
 
-    extract_mask_from_f32_data(&shape, data)
+    outputs
+        .iter()
+        .map(|(_name, output)| {
+            let (shape, data) = output
+                .try_extract_tensor::<f32>()
+                .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
+            let shape = shape
+                .iter()
+                .map(|dimension| {
+                    usize::try_from(*dimension).map_err(|_| FaceCropError::UnexpectedTensorShape)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ModelOutput {
+                shape,
+                data: data.to_vec(),
+            })
+        })
+        .collect()
 }
 
-fn face_detector_tensor(image: &ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> Tensor {
+fn run_segmenter(
+    segmenter: &ModelRunner,
+    input: Vec<f32>,
+    input_size: usize,
+) -> Result<GrayImage, FaceCropError> {
+    let outputs = run_model(segmenter, input, 3, input_size, input_size)?;
+
+    extract_mask_from_f32_data(&outputs[0].shape, &outputs[0].data)
+}
+
+fn face_detector_tensor(image: &ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> Vec<f32> {
     let (width, height) = image.dimensions();
-    let mut tensor = tract_ndarray::Array4::<f32>::zeros((1, 3, height as usize, width as usize));
+    let width = width as usize;
+    let height = height as usize;
+    let mut tensor = vec![0.0_f32; 3 * height * width];
+    let channel_stride = width * height;
 
     for (x, y, pixel) in image.enumerate_pixels() {
         let [r, g, b] = pixel.0;
-        tensor[[0, 0, y as usize, x as usize]] = (b as f32 - 127.0) / 128.0;
-        tensor[[0, 1, y as usize, x as usize]] = (g as f32 - 127.0) / 128.0;
-        tensor[[0, 2, y as usize, x as usize]] = (r as f32 - 127.0) / 128.0;
+        let pixel_index = y as usize * width + x as usize;
+        tensor[pixel_index] = (b as f32 - 127.0) / 128.0;
+        tensor[channel_stride + pixel_index] = (g as f32 - 127.0) / 128.0;
+        tensor[channel_stride * 2 + pixel_index] = (r as f32 - 127.0) / 128.0;
     }
 
-    tensor.into()
+    tensor
 }
 
 fn segmentation_tensor(image: &ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> Vec<f32> {
@@ -522,30 +571,27 @@ fn segmentation_tensor(image: &ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> Vec<f32>
 }
 
 fn parse_ultraface_detections(
-    outputs: &TVec<TValue>,
+    outputs: &[ModelOutput],
     score_threshold: f32,
     iou_threshold: f32,
     min_face_area_ratio: f32,
     detector_input_width: f32,
     detector_input_height: f32,
 ) -> Result<Vec<FaceBox>, FaceCropError> {
-    let mut boxes_view = None;
-    let mut scores_view = None;
+    let mut boxes_output = None;
+    let mut scores_output = None;
 
     for output in outputs {
-        let view = output
-            .to_array_view::<f32>()
-            .map_err(|err| FaceCropError::FaceDetectorModel(err.to_string()))?;
-        match view.shape() {
-            [1, _, 4] => boxes_view = Some(view),
-            [1, _, 2] => scores_view = Some(view),
+        match output.shape.as_slice() {
+            [1, _, 4] => boxes_output = Some(output),
+            [1, _, 2] => scores_output = Some(output),
             _ => {}
         }
     }
 
-    let boxes = boxes_view.ok_or(FaceCropError::UnexpectedTensorShape)?;
-    let scores = scores_view.ok_or(FaceCropError::UnexpectedTensorShape)?;
-    let count = boxes.shape()[1];
+    let boxes = boxes_output.ok_or(FaceCropError::UnexpectedTensorShape)?;
+    let scores = scores_output.ok_or(FaceCropError::UnexpectedTensorShape)?;
+    let count = boxes.shape[1];
     let priors = ultraface_priors(detector_input_width, detector_input_height);
     if priors.len() != count {
         return Err(FaceCropError::UnexpectedTensorShape);
@@ -554,7 +600,7 @@ fn parse_ultraface_detections(
     let mut candidates = Vec::new();
 
     for index in 0..count {
-        let confidence = scores[[0, index, 1]];
+        let confidence = tensor_value(scores, &[0, index, 1])?;
         if confidence < score_threshold {
             continue;
         }
@@ -564,10 +610,10 @@ fn parse_ultraface_detections(
             .copied()
             .ok_or(FaceCropError::UnexpectedTensorShape)?;
         let (x1, y1, x2, y2) = decode_ultraface_box(
-            boxes[[0, index, 0]],
-            boxes[[0, index, 1]],
-            boxes[[0, index, 2]],
-            boxes[[0, index, 3]],
+            tensor_value(boxes, &[0, index, 0])?,
+            tensor_value(boxes, &[0, index, 1])?,
+            tensor_value(boxes, &[0, index, 2])?,
+            tensor_value(boxes, &[0, index, 3])?,
             prior,
         );
         let x1 = x1.clamp(0.0, 1.0);
@@ -603,6 +649,28 @@ fn parse_ultraface_detections(
     }
 
     Ok(kept)
+}
+
+fn tensor_value(output: &ModelOutput, indexes: &[usize]) -> Result<f32, FaceCropError> {
+    if indexes.len() != output.shape.len() {
+        return Err(FaceCropError::UnexpectedTensorShape);
+    }
+
+    let mut flat_index = 0_usize;
+    let mut stride = 1_usize;
+    for (&index, &dimension) in indexes.iter().zip(output.shape.iter()).rev() {
+        if index >= dimension {
+            return Err(FaceCropError::UnexpectedTensorShape);
+        }
+        flat_index += index * stride;
+        stride *= dimension;
+    }
+
+    output
+        .data
+        .get(flat_index)
+        .copied()
+        .ok_or(FaceCropError::UnexpectedTensorShape)
 }
 
 fn ultraface_priors(input_width: f32, input_height: f32) -> Vec<[f32; 4]> {
@@ -721,17 +789,6 @@ fn compute_crop_rect(
         width: crop_width.round().max(1.0) as u32,
         height: crop_height.round().max(1.0) as u32,
     }
-}
-
-#[cfg(not(all(target_arch = "x86_64", feature = "ort-backend")))]
-fn extract_tract_mask(output: &TValue) -> Result<GrayImage, FaceCropError> {
-    let view = output
-        .to_array_view::<f32>()
-        .map_err(|err| FaceCropError::SegmenterModel(err.to_string()))?;
-    let shape = view.shape().to_vec();
-    let data: Vec<f32> = view.iter().copied().collect();
-
-    extract_mask_from_f32_data(&shape, &data)
 }
 
 fn extract_mask_from_f32_data(shape: &[usize], data: &[f32]) -> Result<GrayImage, FaceCropError> {

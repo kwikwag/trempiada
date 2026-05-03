@@ -18,8 +18,12 @@ fn main() {
 fn run() -> Result<(), String> {
     let options = parse_args(env::args().skip(1))?;
 
-    let image_bytes = fs::read(&options.image_path)
-        .map_err(|err| format!("failed to read image {}: {err}", options.image_path.display()))?;
+    let image_bytes = fs::read(&options.image_path).map_err(|err| {
+        format!(
+            "failed to read image {}: {err}",
+            options.image_path.display()
+        )
+    })?;
     let watermark_bytes = match options.watermark_path.as_ref() {
         Some(watermark_path) => Some(fs::read(watermark_path).map_err(|err| {
             format!(
@@ -45,8 +49,12 @@ fn run() -> Result<(), String> {
         })
         .map_err(|err| format!("processing failed: {err}"))?;
 
-    fs::write(&options.output_path, &result.png_bytes)
-        .map_err(|err| format!("failed to write output {}: {err}", options.output_path.display()))?;
+    fs::write(&options.output_path, &result.png_bytes).map_err(|err| {
+        format!(
+            "failed to write output {}: {err}",
+            options.output_path.display()
+        )
+    })?;
 
     println!(
         "wrote {} (face {:.3}, crop {}x{}+{},{} -> {}x{})",
@@ -104,8 +112,10 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<CliOptions, String> 
         }
     }
 
-    let image_path = image_path.ok_or_else(|| usage_error(Some(String::from("missing input image path"))))?;
-    let output_path = output_path.ok_or_else(|| usage_error(Some(String::from("missing output image path"))))?;
+    let image_path =
+        image_path.ok_or_else(|| usage_error(Some(String::from("missing input image path"))))?;
+    let output_path =
+        output_path.ok_or_else(|| usage_error(Some(String::from("missing output image path"))))?;
 
     Ok(CliOptions {
         image_path,
@@ -138,7 +148,9 @@ fn infer_segmenter_preset(path: &Path) -> SegmenterPreset {
 }
 
 fn usage_error(message: Option<String>) -> String {
-    let prefix = message.map(|message| format!("{message}\n")).unwrap_or_default();
+    let prefix = message
+        .map(|message| format!("{message}\n"))
+        .unwrap_or_default();
     format!(
         "{prefix}usage: cargo run --bin run -- <input> <output> [--watermark <watermark.png>] [--ultraface <face_model.onnx>] [--u2net <segmenter_model.onnx>]"
     )
@@ -164,8 +176,14 @@ mod tests {
         assert_eq!(options.image_path, PathBuf::from("input.jpg"));
         assert_eq!(options.output_path, PathBuf::from("output.png"));
         assert_eq!(options.watermark_path, Some(PathBuf::from("wm.png")));
-        assert_eq!(options.face_model_path, PathBuf::from(DEFAULT_ULTRAFACE_PATH));
-        assert_eq!(options.segmenter_model_path, PathBuf::from(DEFAULT_U2NET_PATH));
+        assert_eq!(
+            options.face_model_path,
+            PathBuf::from(DEFAULT_ULTRAFACE_PATH)
+        );
+        assert_eq!(
+            options.segmenter_model_path,
+            PathBuf::from(DEFAULT_U2NET_PATH)
+        );
         assert_eq!(options.segmenter_preset, SegmenterPreset::U2NetP);
     }
 

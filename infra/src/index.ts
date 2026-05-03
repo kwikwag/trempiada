@@ -21,6 +21,7 @@ const browserSessionRole = createBrowserSessionRole({
 const faceCropCodeBuild = createFaceCropCodeBuild({
   resourcePrefix: config.resourcePrefix,
   architecture: config.faceCropArchitecture,
+  enableBuildCache: config.faceCropBuildCache,
 });
 const faceCropLambda = createFaceCropLambda({
   resourcePrefix: config.resourcePrefix,

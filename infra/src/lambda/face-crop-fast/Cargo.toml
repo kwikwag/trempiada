@@ -10,9 +10,7 @@ path = "src/lib.rs"
 [dependencies]
 image = { version = "=0.25.5", default-features = false, features = ["jpeg", "png"] }
 thiserror = "1.0"
-tract-onnx = "0.22.1"
-
-[target.'cfg(target_arch = "x86_64")'.dependencies]
+tract-onnx = { version = "0.22.1", optional = true }
 ort = { version = "=2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs"] }
 
 # Lambda handler (src/bin/lambda.rs)
@@ -25,4 +23,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [features]
 default = []
-ort-backend = ["dep:ort"]
+backend-tract = ["dep:tract-onnx"]
+backend-ort = ["dep:ort"]
+
+[[bin]]
+name = "debug-face"
+path = "src/bin/debug-face.rs"
+required-features = ["backend-tract"]

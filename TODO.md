@@ -19,6 +19,8 @@
 - [ ] `web/src/MockDetector.tsx` - the live-preview path should be covered for successful `getUserMedia`, rejected `getUserMedia`, and cleanup that stops camera tracks on unmount.
 - [ ] `scripts/create_local_liveness_link.ts` - argument parsing should be covered for default values, explicit `--origin` / `--user-id` / `--photo-file-id`, and `--help`.
 - [ ] `infra/src/bot-policy.ts` - `createBotIdentityPolicy` should be covered for the exact Rekognition, STS AssumeRole, and DynamoDB PutItem statements emitted for the bot policy document.
+- [ ] `infra/src/lambda/face-crop-fast/scripts/download-models.sh` - add shell tests for S3 cache hit, S3 cache miss followed by upstream download and cache upload, invalid cached model size, and upstream download failure.
+- [ ] `infra/src/lambda/face-crop-fast/src/lib.rs` - add model-backed tests for `FaceCropper::new_with_segmenter_preset` / `process` under `backend-ort` and `backend-tract`, covering one clear face producing a non-empty crop and an image with multiple faces returning `MultipleFacesDetected`.
 
 ### More info requried
 

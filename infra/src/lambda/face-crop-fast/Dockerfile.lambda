@@ -1,0 +1,28 @@
+# Builds a Lambda deployment ZIP inside Amazon Linux 2023 (same OS as the runtime).
+# Requires Docker BuildKit (DOCKER_BUILDKIT=1).
+#
+# Build and extract the ZIP:
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.lambda \
+#     --target dist --build-arg ARCH=x86_64 \
+#     --output type=local,dest=./dist .
+
+ARG ARCH=x86_64
+ARG BACKEND=""
+
+FROM amazonlinux:2023 AS builder
+ARG ARCH
+ARG BACKEND
+
+RUN dnf install -y zip findutils gcc gcc-c++ make pkgconf-pkg-config openssl-devel curl \
+  && dnf clean all
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
+
+WORKDIR /build
+COPY . .
+
+RUN bash scripts/build-lambda-zip.sh "${ARCH}" "${BACKEND}"
+
+FROM scratch AS dist
+COPY --from=builder /build/dist /

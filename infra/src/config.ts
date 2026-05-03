@@ -11,6 +11,7 @@ export type LivenessConfig = {
   corsAllowOrigins: string[];
   bootstrapRoleTrustedPrincipalArns: pulumi.Input<string[]>;
   faceCropArchitecture: "x86_64" | "arm64";
+  faceCropBuildCache: boolean;
   faceCropZipLocalPath?: string;
   faceCropCodeS3Bucket?: string;
   faceCropCodeS3Key?: string;
@@ -30,6 +31,7 @@ export function getLivenessConfig(): LivenessConfig {
   if (faceCropArchitecture !== "x86_64" && faceCropArchitecture !== "arm64") {
     throw new Error("faceCropArchitecture must be either 'x86_64' or 'arm64'");
   }
+  const faceCropBuildCache = config.getBoolean("faceCropBuildCache") ?? false;
   const faceCropZipLocalPath = config.get("faceCropZipLocalPath");
   const faceCropCodeS3Bucket = config.get("faceCropCodeS3Bucket");
   const faceCropCodeS3Key = config.get("faceCropCodeS3Key");
@@ -58,6 +60,7 @@ export function getLivenessConfig(): LivenessConfig {
     corsAllowOrigins,
     bootstrapRoleTrustedPrincipalArns,
     faceCropArchitecture,
+    faceCropBuildCache,
     faceCropZipLocalPath,
     faceCropCodeS3Bucket,
     faceCropCodeS3Key,

@@ -2,16 +2,17 @@
 set -euo pipefail
 
 arch="${1:-x86_64}"
+backend="${FACE_CROP_BACKEND:-${2:-}}"
 case "$arch" in
   x86_64)
-    cargo_args=(--release --bin lambda --features ort-backend)
     binary_path="target/release/lambda"
     zip_name="face-crop-fast-x86_64.zip"
+    backend="${backend:-ort}"
     ;;
   arm64)
-    cargo_args=(--release --bin lambda)
     binary_path="target/release/lambda"
     zip_name="face-crop-fast-arm64.zip"
+    backend="${backend:-tract}"
     machine="$(uname -m)"
     if [[ "$machine" != "aarch64" && "$machine" != "arm64" ]]; then
       echo "arm64 ZIP builds should run on an ARM64 host, such as AWS CodeBuild ARM/Graviton." >&2
@@ -20,7 +21,22 @@ case "$arch" in
     fi
     ;;
   *)
-    echo "usage: $0 [x86_64|arm64]" >&2
+    echo "usage: $0 [x86_64|arm64] [ort|tract]" >&2
+    exit 2
+    ;;
+esac
+
+case "$backend" in
+  ort)
+    echo "Using ORT backend."
+    cargo_args=(--release --bin lambda --no-default-features --features backend-ort)
+    ;;
+  tract)
+    echo "Using Tract backend."
+    cargo_args=(--release --bin lambda --no-default-features --features backend-tract)
+    ;;
+  *)
+    echo "usage: $0 [x86_64|arm64] [ort|tract]" >&2
     exit 2
     ;;
 esac
@@ -31,8 +47,18 @@ dist_dir="$crate_dir/dist"
 staging_dir="$crate_dir/target/lambda-zip-$arch"
 
 cd "$crate_dir"
+
+for model in models/ultraface-rfb-320.onnx models/u2netp.onnx; do
+  if [[ ! -s "$model" ]]; then
+    echo "Required model $model is missing. Run scripts/download-models.sh before building." >&2
+    exit 1
+  fi
+done
+
+echo "Building."
 cargo build "${cargo_args[@]}"
 
+echo "Done building. Packaging."
 rm -rf "$staging_dir"
 mkdir -p "$staging_dir/models" "$dist_dir"
 
@@ -41,7 +67,7 @@ chmod +x "$staging_dir/bootstrap"
 cp models/ultraface-rfb-320.onnx "$staging_dir/models/ultraface-rfb-320.onnx"
 cp models/u2netp.onnx "$staging_dir/models/u2netp.onnx"
 
-if [[ "$arch" == "x86_64" ]]; then
+if [[ "$backend" == "ort" ]]; then
   mapfile -t ort_libs < <(find -L target/release target/release/deps -maxdepth 1 -type f -name 'libonnxruntime.so*' 2>/dev/null | sort -u)
   for lib in "${ort_libs[@]}"; do
     cp -L "$lib" "$staging_dir/$(basename "$lib")"

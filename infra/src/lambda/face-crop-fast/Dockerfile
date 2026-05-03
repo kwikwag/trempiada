@@ -1,9 +1,9 @@
 # Build a Lambda container for either:
-# - linux/amd64: x86_64 Lambda with the ORT U2Net backend
+# - linux/amd64: x86_64 Lambda with the ORT backend by default
 # - linux/arm64: arm64 Lambda with the tract-only backend
 #
 # Example:
-#   docker build --platform=linux/amd64 --build-arg CARGO_FEATURES=ort-backend -t face-crop-fast:lambda .
+#   docker build --platform=linux/amd64 -t face-crop-fast:lambda .
 #   docker build --platform=linux/arm64 -t face-crop-fast:lambda .
 
 FROM --platform=$BUILDPLATFORM rust:1-slim-bookworm AS builder
@@ -25,8 +25,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 RUN set -eux; \
-    feature_args=""; \
-    if [ -n "$CARGO_FEATURES" ]; then feature_args="--features ${CARGO_FEATURES}"; fi; \
+    if [ -z "$CARGO_FEATURES" ]; then \
+      if [ "$TARGETARCH" = "amd64" ]; then CARGO_FEATURES="backend-ort"; else CARGO_FEATURES="backend-tract"; fi; \
+    fi; \
+    feature_args="--no-default-features --features ${CARGO_FEATURES}"; \
     if [ "$TARGETARCH" = "arm64" ]; then \
       cargo build --release --bin lambda --target aarch64-unknown-linux-gnu ${feature_args}; \
     elif [ "$TARGETARCH" = "amd64" ]; then \

@@ -1,0 +1,95 @@
+version: 0.2
+# NOTE : this file comes into effect only with `pulumi up` - so changes here must be deployed
+#        via `pulumi up` before trying to run `deploy-codebuild-zip.sh`
+# cache.paths is only active when the CodeBuild project has S3 cache configured
+# (faceCropBuildCache: true in Pulumi config). Otherwise this section is ignored.
+cache:
+  paths:
+    - /root/.cargo/registry/**/*
+    - /root/.cargo/git/**/*
+
+phases:
+  install:
+    on-failure: ABORT
+    commands:
+      - set -euo pipefail
+      - |
+        set -euo pipefail
+        if command -v dnf >/dev/null 2>&1; then
+          dnf install -y zip findutils gcc gcc-c++ make pkgconf-pkg-config openssl-devel
+        elif command -v yum >/dev/null 2>&1; then
+          yum install -y zip findutils gcc gcc-c++ make pkgconfig openssl-devel
+        fi
+      - |
+        set -euo pipefail
+        if ! command -v cargo >/dev/null 2>&1; then
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+        fi
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - set -euo pipefail
+      - test -n "$SOURCE_BUCKET"
+      - test -n "$SOURCE_KEY"
+      - test -n "$OUTPUT_BUCKET"
+      - test -n "$OUTPUT_KEY"
+      - test -n "$FACE_CROP_ARCH"
+      - aws s3 cp "s3://$SOURCE_BUCKET/$SOURCE_KEY" /tmp/face-crop-fast-source.tgz
+      - mkdir -p /tmp/face-crop-fast-source
+      - tar -xzf /tmp/face-crop-fast-source.tgz -C /tmp/face-crop-fast-source
+      - bash /tmp/face-crop-fast-source/scripts/download-models.sh --non-interactive --cache-bucket "$SOURCE_BUCKET" --cache-prefix model-cache
+      - |
+        set -euo pipefail
+        cd /tmp/face-crop-fast-source
+        test -s models/ultraface-rfb-320.onnx
+        test -s models/u2netp.onnx
+        echo "Model files are present:"
+        ls -lh models/ultraface-rfb-320.onnx models/u2netp.onnx
+  build:
+    on-failure: ABORT
+    commands:
+      - set -euo pipefail
+      - if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+      - cd /tmp/face-crop-fast-source && bash scripts/build-lambda-zip.sh "$FACE_CROP_ARCH"
+  post_build:
+    on-failure: ABORT
+    commands:
+      - set -euo pipefail
+      - |
+        set -euo pipefail
+        echo "=== ORT linkage check ==="
+        bootstrap=$(find /tmp/face-crop-fast-source/target -name bootstrap -type f 2>/dev/null | head -1)
+        if [ -n "$bootstrap" ]; then
+          if ldd "$bootstrap" 2>/dev/null | grep -q 'libonnxruntime'; then
+            echo "ORT: dynamically linked"
+            ldd "$bootstrap" | grep onnxruntime
+          elif nm -D "$bootstrap" 2>/dev/null | grep -q 'OrtGetApiBase\|OrtCreateEnv'; then
+            echo "ORT: statically linked (embedded in binary)"
+          else
+            echo "ORT: not detected — tract-only build"
+          fi
+        else
+          echo "Warning: bootstrap binary not found in target/"
+        fi
+      - |
+        set -euo pipefail
+        echo "=== bootstrap glibc requirements ==="
+        bootstrap=$(find /tmp/face-crop-fast-source/target -name bootstrap -type f 2>/dev/null | head -1)
+        [ -n "$bootstrap" ] && ldd "$bootstrap" || true
+      - |
+        set -euo pipefail
+        echo "=== rejecting any symbol newer than GLIBC_2.34 ==="
+        for f in $(find /tmp/face-crop-fast-source/target -name bootstrap -o -name 'libonnxruntime.so*' 2>/dev/null); do
+          bad=$(readelf -sW "$f" 2>/dev/null \
+            | grep -oP 'GLIBC_\d+\.\d+' \
+            | sort -uV \
+            | awk -F'[_.]' '($2 == 2 && $3 > 34) || $2 > 2' \
+            || true)
+          if [ -n "$bad" ]; then
+            echo "FAIL: $f requires $bad (> GLIBC_2.34)" >&2
+            exit 1
+          fi
+        done
+        echo "glibc check passed"
+      - test -s "/tmp/face-crop-fast-source/dist/face-crop-fast-$FACE_CROP_ARCH.zip"
+      - aws s3 cp "/tmp/face-crop-fast-source/dist/face-crop-fast-$FACE_CROP_ARCH.zip" "s3://$OUTPUT_BUCKET/$OUTPUT_KEY"

@@ -73,7 +73,9 @@ fn run() -> Result<(), String> {
                         view[[0, i, 3]]
                     );
                 }
-                let interesting = [4291_usize, 4271, 4396, 4293, 4311, 4273, 4381, 4399, 4289, 4397];
+                let interesting = [
+                    4291_usize, 4271, 4396, 4293, 4311, 4273, 4381, 4399, 4289, 4397,
+                ];
                 println!("decoded top candidate boxes:");
                 for idx in interesting {
                     let prior = priors[idx];
@@ -106,9 +108,7 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn face_detector_tensor(
-    image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
-) -> Tensor {
+fn face_detector_tensor(image: &image::ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> Tensor {
     let (width, height) = image.dimensions();
     let mut tensor = tract_ndarray::Array4::<f32>::zeros((1, 3, height as usize, width as usize));
 

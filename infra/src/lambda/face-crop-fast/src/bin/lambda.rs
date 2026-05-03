@@ -57,7 +57,11 @@ async fn handle(event: LambdaEvent<Event>, state: Arc<State>) -> Result<Response
         Some(b) => b,
         None => {
             let b = fetch_s3(&state.s3, &ev.watermark_s3.bucket, &ev.watermark_s3.key).await?;
-            state.watermark_cache.lock().await.insert(wm_cache_key, b.clone());
+            state
+                .watermark_cache
+                .lock()
+                .await
+                .insert(wm_cache_key, b.clone());
             b
         }
     };
@@ -106,10 +110,20 @@ async fn main() -> Result<(), LambdaError> {
         FaceCropperConfig::default(),
     )?;
 
+    // Pre-warm the watermark cache if the location is known at init time.
+    let mut watermark_cache = HashMap::new();
+    if let (Ok(bucket), Ok(key)) = (
+        std::env::var("WATERMARK_BUCKET"),
+        std::env::var("WATERMARK_KEY"),
+    ) {
+        let data = fetch_s3(&s3, &bucket, &key).await?;
+        watermark_cache.insert(format!("{bucket}/{key}"), data);
+    }
+
     let state = Arc::new(State {
         cropper,
         s3,
-        watermark_cache: Mutex::new(HashMap::new()),
+        watermark_cache: Mutex::new(watermark_cache),
     });
 
     lambda_runtime::run(service_fn(|event| {

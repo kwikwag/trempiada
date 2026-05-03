@@ -97,6 +97,8 @@ export function createFaceCropLambda(args: {
     environment: {
       variables: {
         LD_LIBRARY_PATH: "/var/task",
+        WATERMARK_BUCKET: assetsBucket.id,
+        WATERMARK_KEY: watermarkKey,
       },
     },
   });
