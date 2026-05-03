@@ -20,7 +20,7 @@
     "test:all": "node --test -r ts-node/register/transpile-only 'tests/{unit,integration,e2e}/**/*.test.ts'",
     "test:unit": "npm test",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "pre-commit": "lint-staged --no-stage && npm run typecheck"
+    "pre-commit": "lint-staged && npm run typecheck"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,json}": "prettier --write",
@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1035.0",
+    "@aws-sdk/client-lambda": "^3.1037.0",
     "@aws-sdk/client-rekognition": "^3.1035.0",
     "@aws-sdk/client-sts": "^3.1035.0",
     "@aws-sdk/lib-dynamodb": "^3.1035.0",

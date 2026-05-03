@@ -28,6 +28,9 @@ const EnvSchema = z.object({
   AWS_FACE_MAX_ROLL: z.coerce.number().nonnegative().default(15),
   AWS_FACE_OUTPUT_SIZE: z.coerce.number().int().positive().default(512),
   AWS_FACE_CROP_PADDING_RATIO: z.coerce.number().nonnegative().default(0.15),
+  AWS_FACE_CROP_LAMBDA_NAME: z.string().optional(),
+  AWS_WATERMARK_BUCKET: z.string().optional(),
+  AWS_WATERMARK_KEY: z.string().optional(),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
@@ -65,6 +68,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         outputSize: parsed.AWS_FACE_OUTPUT_SIZE,
         cropPaddingRatio: parsed.AWS_FACE_CROP_PADDING_RATIO,
       },
+      faceCropLambdaName: parsed.AWS_FACE_CROP_LAMBDA_NAME,
+      watermarkBucket: parsed.AWS_WATERMARK_BUCKET,
+      watermarkKey: parsed.AWS_WATERMARK_KEY,
     },
   };
 }

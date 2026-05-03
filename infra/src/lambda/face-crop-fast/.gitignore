@@ -1,0 +1,18 @@
+/target/
+/Cargo.lock
+
+# Local model files
+*.onnx
+*.ort
+
+# Local test assets and generated images
+/models/
+/samples/
+/tmp/
+/out/
+*.png
+*.jpg
+*.jpeg
+
+# OS/editor noise
+.DS_Store

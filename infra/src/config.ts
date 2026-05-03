@@ -10,6 +10,10 @@ export type LivenessConfig = {
   tokenTtlSeconds: number;
   corsAllowOrigins: string[];
   bootstrapRoleTrustedPrincipalArns: pulumi.Input<string[]>;
+  faceCropArchitecture: "x86_64" | "arm64";
+  faceCropZipLocalPath?: string;
+  faceCropCodeS3Bucket?: string;
+  faceCropCodeS3Key?: string;
 };
 
 function trimTrailingSlash(value: string): string {
@@ -22,6 +26,19 @@ export function getLivenessConfig(): LivenessConfig {
   const livenessPageBaseUrl = trimTrailingSlash(config.require("livenessPageBaseUrl"));
   const tokenTtlSeconds = config.getNumber("tokenTtlSeconds") ?? 180;
   const corsAllowOrigins = config.getObject<string[]>("corsAllowOrigins") ?? ["*"];
+  const faceCropArchitecture = config.get("faceCropArchitecture") ?? "x86_64";
+  if (faceCropArchitecture !== "x86_64" && faceCropArchitecture !== "arm64") {
+    throw new Error("faceCropArchitecture must be either 'x86_64' or 'arm64'");
+  }
+  const faceCropZipLocalPath = config.get("faceCropZipLocalPath");
+  const faceCropCodeS3Bucket = config.get("faceCropCodeS3Bucket");
+  const faceCropCodeS3Key = config.get("faceCropCodeS3Key");
+  if (
+    (faceCropCodeS3Bucket && !faceCropCodeS3Key) ||
+    (!faceCropCodeS3Bucket && faceCropCodeS3Key)
+  ) {
+    throw new Error("faceCropCodeS3Bucket and faceCropCodeS3Key must be set together");
+  }
   const bootstrapRoleTrustedPrincipalArns =
     config.getObject<string[]>("bootstrapRoleTrustedPrincipalArns") ??
     aws
@@ -40,5 +57,9 @@ export function getLivenessConfig(): LivenessConfig {
     tokenTtlSeconds,
     corsAllowOrigins,
     bootstrapRoleTrustedPrincipalArns,
+    faceCropArchitecture,
+    faceCropZipLocalPath,
+    faceCropCodeS3Bucket,
+    faceCropCodeS3Key,
   };
 }

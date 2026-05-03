@@ -1,0 +1,56 @@
+# Produces a face-crop-fast CLI image for Amazon Linux 2023 / aarch64.
+# Intended for direct use on a Graviton EC2 bot server.
+#
+# All dependencies are pure Rust (tract-onnx for both models) — no C++ runtime
+# required, so standard GCC cross-compilation works without special linker flags.
+#
+# Build the image:
+#   docker build -f Dockerfile.al2023 -t face-crop-fast:al2023 .
+#
+# Extract just the binary (needs BuildKit):
+#   docker build -f Dockerfile.al2023 --target export --output type=local,dest=./dist .
+#
+# Run interactively (mounts current directory):
+#   docker run --rm -v "$PWD":/work face-crop-fast:al2023 \
+#     /work/input.jpg /work/output.png [--watermark /work/watermark.png]
+#
+# Or copy the exported ./dist/ tree to the server and run:
+#   /path/to/dist/face-crop-fast input.jpg output.png
+
+# ── Build (x86_64 host, cross-compiling for aarch64) ─────────────────────────
+FROM --platform=linux/amd64 rust:1-slim-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates pkg-config libssl-dev patchelf \
+    gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup target add aarch64-unknown-linux-gnu
+
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+RUN cargo build --release --bin run --target aarch64-unknown-linux-gnu
+
+RUN mkdir -p /out && \
+    patchelf --remove-rpath \
+             target/aarch64-unknown-linux-gnu/release/run && \
+    cp target/aarch64-unknown-linux-gnu/release/run /out/face-crop-fast
+
+# ── Export stage: just the binary (no OS, no models) ─────────────────────────
+# Use:  docker build --target export --output type=local,dest=./dist .
+FROM scratch AS export
+COPY --from=builder /out/ /
+
+# ── Runtime image: AL2023 aarch64 with models baked in ───────────────────────
+FROM --platform=linux/arm64 amazonlinux:2023
+
+WORKDIR /opt/face-crop-fast
+
+COPY --from=builder /out/ ./
+COPY models/ ./models/
+
+ENTRYPOINT ["./face-crop-fast"]

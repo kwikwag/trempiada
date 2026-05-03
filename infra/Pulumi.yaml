@@ -2,6 +2,8 @@ name: trempiada-liveness
 runtime: nodejs
 description: Minimal AWS infrastructure for the liveness verification flow
 main: index.ts
+backend:
+  url: s3://trempbot-pulumi-463360568852-us-east-1-an/config?region=us-east-1&awssdk=v2
 config:
   aws:region:
     value: us-east-1

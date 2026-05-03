@@ -1,5 +1,9 @@
 ## TODO
 
+### Matching algorithm
+
+- [ ] Allow a the rider to opt for a same-sex driver.
+
 ### UX
 
 - [ ] `src/bot/ui.ts` - `renderProfile` should add 'Show picture' (if set) or 'Add picture' (if unset). When showing picture, have a 'Change picture' button.
@@ -9,6 +13,7 @@
 ### Test coverage
 
 - [ ] `src/services/identity/profile-face.ts` - `validateAndCropPhoto` should be covered for zero-face, multi-face, occluded, low-brightness, low-sharpness, bad-pose, and successful crop cases using realistic image fixtures.
+- [ ] `src/services/identity/profile-face.ts` - `invokeFaceCropLambda` should be covered for: successful lambda response (base64 JPEG decoded correctly), `FunctionError` set (falls back to null), lambda SDK throws (falls back to null), missing `image_base64` field in response body.
 - [ ] `src/bot/handlers/profile-photo.ts` - `tryTelegramProfilePhoto` / `processPhotoCandidate` should be covered for Telegram download failure, invalid-face rejection, cropped-photo send failure, and Telegram-profile-photo fallback to manual upload.
 - [ ] `web/src/App.tsx` - the return-to-Telegram `location.assign` fallback path should be covered without relying on a real browser navigation primitive.
 - [ ] `web/src/MockDetector.tsx` - the live-preview path should be covered for successful `getUserMedia`, rejected `getUserMedia`, and cleanup that stops camera tracks on unmount.

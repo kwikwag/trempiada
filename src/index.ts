@@ -1,6 +1,7 @@
 import "dotenv/config";
 import path from "path";
 import { Telegraf } from "telegraf";
+import { LambdaClient } from "@aws-sdk/client-lambda";
 import { RekognitionClient } from "@aws-sdk/client-rekognition";
 import { initDatabase } from "./db/migrate";
 import { Repository } from "./db/repository";
@@ -85,10 +86,20 @@ async function main() {
   const rekognition = new RekognitionClient({ region: config.aws.region });
   const { dynamo, sts } = createAwsClients(config.aws.region);
   const telegramPhotos = new TelegramPhotoService({ botToken: BOT_TOKEN, logger });
+  const faceCropLambdaConfig =
+    config.aws.faceCropLambdaName && config.aws.watermarkBucket && config.aws.watermarkKey
+      ? {
+          lambdaClient: new LambdaClient({ region: config.aws.region }),
+          functionName: config.aws.faceCropLambdaName,
+          watermarkBucket: config.aws.watermarkBucket,
+          watermarkKey: config.aws.watermarkKey,
+        }
+      : undefined;
   const profileFace = new ProfileFaceService({
     rekognition,
     logger,
     thresholds: config.aws.face,
+    faceCropLambda: faceCropLambdaConfig,
   });
   const faceLiveness = new FaceLivenessService({
     rekognition,

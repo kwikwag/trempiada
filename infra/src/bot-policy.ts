@@ -10,10 +10,11 @@ export function createBotIdentityPolicy(args: {
   resourcePrefix: string;
   tokenTableArn: pulumi.Input<string>;
   browserSessionRoleArn: pulumi.Input<string>;
+  faceCropLambdaArn: pulumi.Input<string>;
 }): BotIdentityPolicy {
   const document = pulumi
-    .all([args.tokenTableArn, args.browserSessionRoleArn])
-    .apply(([tokenTableArn, browserSessionRoleArn]) =>
+    .all([args.tokenTableArn, args.browserSessionRoleArn, args.faceCropLambdaArn])
+    .apply(([tokenTableArn, browserSessionRoleArn, faceCropLambdaArn]) =>
       JSON.stringify({
         Version: "2012-10-17",
         Statement: [
@@ -39,6 +40,12 @@ export function createBotIdentityPolicy(args: {
             Effect: "Allow",
             Action: ["dynamodb:PutItem"],
             Resource: tokenTableArn,
+          },
+          {
+            Sid: "InvokeFaceCropLambda",
+            Effect: "Allow",
+            Action: ["lambda:InvokeFunction"],
+            Resource: faceCropLambdaArn,
           },
         ],
       }),

@@ -61,7 +61,7 @@ src/
 - **Matching algorithm**: Quick-filter candidates by haversine distance + time window, then OSRM detour calculation for accurate results. Ranked by least detour.
 - **Points economy**: Rides are free. Drivers earn 2 pts (rating ≥4) or 1 pt (rating <4). Riders earn 0.5/0.2. New users get 5 pts. No real money touches the system.
 - **Trust model**: Drivers must complete ≥1 verification. Each verification is stored in DB; drivers control which are _visible_ to riders vs just verified by the system.
-- **Profile photos**: Optional. Any accepted photo must pass Rekognition face checks (exactly one clear face), is cropped to a centered square portrait, and is only stored after the user confirms the cropped result. On the first ride/drive action for a user without a photo, a one-time nudge is shown ("Add photo now or skip?"); after they respond the nudge never appears again (`photo_nudged_at` in DB). My Profile shows photo state as one of: Missing / Unverified / Verified ✅. Photo-related logic lives in `src/bot/handlers/profile-photo.ts`; liveness in `src/bot/handlers/liveness.ts`.
+- **Profile photos**: Optional. Any accepted photo must pass Rekognition face checks (exactly one clear face), then is processed by the face-crop-fast Lambda (background removal + gradient composite + watermark, JPEG q60) when configured, falling back to a local sharp-based crop. The processed photo is only stored after the user confirms the result. On the first ride/drive action for a user without a photo, a one-time nudge is shown ("Add photo now or skip?"); after they respond the nudge never appears again (`photo_nudged_at` in DB). My Profile shows photo state as one of: Missing / Unverified / Verified ✅. Photo-related logic lives in `src/bot/handlers/profile-photo.ts`; liveness in `src/bot/handlers/liveness.ts`.
 - **Liveness flow**: Optional. Starts from Telegram, opens a GitHub Pages app, uses a one-time DynamoDB bootstrap token plus pre-created STS credentials, and is finalized only when the bot polls Rekognition results and compares the returned reference face to the user's current accepted profile photo. `startLivenessCheck(ctx, telegramId, deps)` in `src/bot/handlers/liveness.ts` is the shared entry point used by both the profile action and any future enforcement points.
 - **Message relay**: During active rides, non-command messages forwarded between parties through the bot (no personal contact shared).
 - **Anti-gaming**: Min 5km ride distance, same-pair 24h cooldown, cancellation tracking, simultaneous rating reveal.
@@ -76,11 +76,16 @@ ANTHROPIC_API_KEY=   # For car photo analysis (required)
 DATABASE_PATH=       # Default: ./data/rides.db
 OSRM_URL=            # Default: http://localhost:5000
 LOG_LEVEL=           # debug | info | warn | error (default: info)
-AWS_REGION=          # Rekognition / STS / DynamoDB region
+AWS_REGION=          # Rekognition / STS / DynamoDB / Lambda region
 AWS_LIVENESS_ROLE_ARN=
 AWS_LIVENESS_BOOTSTRAP_TABLE=
 AWS_LIVENESS_PAGES_URL=
+AWS_FACE_CROP_LAMBDA_NAME=   # face-crop-fast Lambda function name (optional; falls back to local sharp crop)
+AWS_WATERMARK_BUCKET=        # S3 bucket holding the watermark PNG
+AWS_WATERMARK_KEY=           # S3 key for the watermark PNG (e.g. assets/watermark.png)
 ```
+
+All three `AWS_FACE_CROP_*` / `AWS_WATERMARK_*` vars must be set together; if any is absent the service falls back to the local sharp-based crop with no background removal.
 
 ## Conventions
 

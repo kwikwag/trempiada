@@ -1,0 +1,28 @@
+[package]
+name = "face-crop-fast"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "face_crop_fast"
+path = "src/lib.rs"
+
+[dependencies]
+image = { version = "=0.25.5", default-features = false, features = ["jpeg", "png"] }
+thiserror = "1.0"
+tract-onnx = "0.22.1"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+ort = { version = "=2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs"] }
+
+# Lambda handler (src/bin/lambda.rs)
+aws-config = "1"
+aws-sdk-s3 = "1"
+base64 = "0.22"
+lambda_runtime = "0.13"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[features]
+default = []
+ort-backend = ["dep:ort"]

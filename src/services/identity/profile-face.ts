@@ -5,6 +5,7 @@ import {
   type FaceDetail,
   type RekognitionClient,
 } from "@aws-sdk/client-rekognition";
+import { InvokeCommand, type LambdaClient } from "@aws-sdk/client-lambda";
 import type { Logger } from "../../logger";
 import { noopLogger } from "../../logger";
 
@@ -20,6 +21,13 @@ export interface Size {
   height: number;
 }
 
+export interface FaceCropLambdaConfig {
+  lambdaClient: Pick<LambdaClient, "send">;
+  functionName: string;
+  watermarkBucket: string;
+  watermarkKey: string;
+}
+
 export interface ProfileFaceServiceOptions {
   rekognition: Pick<RekognitionClient, "send">;
   logger?: Logger;
@@ -32,17 +40,26 @@ export interface ProfileFaceServiceOptions {
     outputSize: number;
     cropPaddingRatio: number;
   };
+  /** When provided, background removal and crop are delegated to this lambda. */
+  faceCropLambda?: FaceCropLambdaConfig;
 }
 
 export class ProfileFaceService {
   private readonly rekognition: Pick<RekognitionClient, "send">;
   private readonly logger: Logger;
   private readonly thresholds: ProfileFaceServiceOptions["thresholds"];
+  private readonly faceCropLambda?: FaceCropLambdaConfig;
 
-  constructor({ rekognition, logger = noopLogger, thresholds }: ProfileFaceServiceOptions) {
+  constructor({
+    rekognition,
+    logger = noopLogger,
+    thresholds,
+    faceCropLambda,
+  }: ProfileFaceServiceOptions) {
     this.rekognition = rekognition;
     this.logger = logger;
     this.thresholds = thresholds;
+    this.faceCropLambda = faceCropLambda;
   }
 
   async validateAndCropPhoto(
@@ -77,6 +94,12 @@ export class ProfileFaceService {
       return invalidPhoto(rejectionReason.message, rejectionReason.code);
     }
 
+    if (this.faceCropLambda) {
+      const lambdaResult = await this.invokeFaceCropLambda(imageBuffer, face);
+      if (lambdaResult) return lambdaResult;
+      // Fall through to local crop if lambda fails
+    }
+
     try {
       const image = sharp(imageBuffer, { failOn: "none" });
       const meta = await image.metadata();
@@ -107,6 +130,45 @@ export class ProfileFaceService {
         "I couldn't prepare that photo. Please try a different one.",
         "crop_failed",
       );
+    }
+  }
+
+  private async invokeFaceCropLambda(
+    imageBuffer: Buffer,
+    face: FaceDetail,
+  ): Promise<ProfilePhotoValidationResult | null> {
+    const cfg = this.faceCropLambda!;
+    try {
+      const payload = JSON.stringify({
+        image_base64: imageBuffer.toString("base64"),
+        watermark_s3: { bucket: cfg.watermarkBucket, key: cfg.watermarkKey },
+      });
+      const response = await cfg.lambdaClient.send(
+        new InvokeCommand({ FunctionName: cfg.functionName, Payload: Buffer.from(payload) }),
+      );
+      if (response.FunctionError) {
+        this.logger.warn("face_crop_lambda_function_error", { error: response.FunctionError });
+        return null;
+      }
+      const body = JSON.parse(Buffer.from(response.Payload!).toString()) as {
+        image_base64: string;
+      };
+      const croppedBuffer = Buffer.from(body.image_base64, "base64");
+      // cropRegion is computed locally for metadata; the actual crop was done by the lambda.
+      const image = sharp(imageBuffer, { failOn: "none" });
+      const meta = await image.metadata();
+      const imgWidth = meta.width ?? this.thresholds.outputSize;
+      const imgHeight = meta.height ?? this.thresholds.outputSize;
+      const cropRegion = getFaceCrop({
+        face,
+        width: imgWidth,
+        height: imgHeight,
+        paddingRatio: this.thresholds.cropPaddingRatio,
+      });
+      return { ok: true, croppedBuffer, mimeType: "image/jpeg", face, cropRegion };
+    } catch (err) {
+      this.logger.warn("face_crop_lambda_failed", { err });
+      return null;
     }
   }
 

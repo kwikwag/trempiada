@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="24.044907mm"
+   height="7.5108695mm"
+   viewBox="0 0 24.044907 7.5108693"
+   version="1.1"
+   id="svg5"
+   sodipodi:docname="watermark.svg"
+   inkscape:export-filename="watermark.png"
+   inkscape:export-xdpi="300"
+   inkscape:export-ydpi="300"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="2.3786088"
+     inkscape:cx="87.866487"
+     inkscape:cy="-20.39007"
+     inkscape:window-width="1472"
+     inkscape:window-height="891"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs2">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient850">
+      <stop
+         style="stop-color:#ffb900;stop-opacity:1;"
+         offset="0"
+         id="stop846" />
+      <stop
+         style="stop-color:#0700ff;stop-opacity:1;"
+         offset="1"
+         id="stop848" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient819">
+      <stop
+         style="stop-color:#00ff00;stop-opacity:1;"
+         offset="0"
+         id="stop815" />
+      <stop
+         style="stop-color:#e000ff;stop-opacity:1;"
+         offset="1"
+         id="stop817" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient819"
+       id="linearGradient821"
+       x1="110.59862"
+       y1="149.75407"
+       x2="145.69186"
+       y2="149.75407"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.63260023,0,0,0.63260023,36.66024,58.500161)" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient850"
+       id="linearGradient852"
+       x1="110.59862"
+       y1="149.75407"
+       x2="145.69186"
+       y2="149.75407"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.63260023,0,0,0.63260023,36.66024,58.500161)" />
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-103.7646,-149.59166)">
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:4.6865px;line-height:2.2;font-family:Abraham;-inkscape-font-specification:Abraham;text-decoration-color:#000000;opacity:0.33;fill:url(#linearGradient821);fill-opacity:1;stroke:url(#linearGradient852);stroke-width:0.26243;stroke-dasharray:none;stop-color:#000000"
+       x="106.24534"
+       y="154.67102"
+       id="text236"><tspan
+         sodipodi:role="line"
+         id="tspan234"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Abraham;-inkscape-font-specification:Abraham;fill:url(#linearGradient821);fill-opacity:1;stroke:url(#linearGradient852);stroke-width:0.26243;stroke-dasharray:none"
+         x="106.24534"
+         y="154.67102">טרמפיאדה</tspan></text>
+    <rect
+       style="opacity:0.4;fill:#ffffff;fill-opacity:0;stroke-width:0.242567;stroke-dasharray:none;stop-color:#000000"
+       id="rect15032"
+       width="24.044907"
+       height="7.5108695"
+       x="103.7646"
+       y="149.59166" />
+  </g>
+</svg>

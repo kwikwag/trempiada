@@ -5,6 +5,10 @@
   "description": "Pulumi infrastructure for the liveness feature",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:face-crop:x64": "bash src/lambda/face-crop-fast/scripts/build-lambda-zip.sh x86_64",
+    "build:face-crop:arm64": "bash src/lambda/face-crop-fast/scripts/build-lambda-zip.sh arm64",
+    "deploy:face-crop:codebuild:x64": "bash src/lambda/face-crop-fast/scripts/deploy-codebuild-zip.sh x86_64",
+    "deploy:face-crop:codebuild:arm64": "bash src/lambda/face-crop-fast/scripts/deploy-codebuild-zip.sh arm64",
     "test": "node --test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
